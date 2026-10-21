@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.9", "3.11", "3.13"]
+        python: ["3.9", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -16,6 +16,20 @@ jobs:
       - run: pip install -e ".[test]"
       - run: pytest
       - run: pip install networkx scipy pandas polars ipython nbclient nbformat ipykernel igraph && pytest
-      - name: Real Spark (Java is preinstalled on the runner)
-        if: matrix.python == '3.11'
-        run: pip install pyspark && pytest tests/test_spark.py -rs
+      - name: Real Spark, classic and Spark Connect (Java is preinstalled on the runner)
+        if: matrix.python == '3.12'
+        run: |
+          pip install "pyspark[connect]"
+          pytest tests/test_spark.py tests/test_databricks_notebook.py -rs
+          pytest tests/test_spark_connect.py -rs
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[test]" playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: pytest tests/test_browser.py -rs

@@ -141,3 +141,9 @@ def test_real_spark_neighborhood_and_export(spark, monkeypatch):
     nodes, edges = g.to_spark(spark, metrics=["degree", "community"])
     assert nodes.count() == 4 and edges.count() == 3
     assert set(nodes.columns) >= {"id", "hop", "degree", "community"}
+
+
+def test_real_spark_doctor(spark):
+    report = tc.doctor(spark, quick=True)
+    assert report.ok, repr(report)
+    assert next(c for c in report if c.name == "spark: flavor").detail.startswith("classic Spark")

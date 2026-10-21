@@ -232,6 +232,29 @@ not fit, tareco keeps its most important part and says so in the header
 (`48,000 of 1,200,000 nodes`). Pass `budget_mb=` to change it; on Databricks,
 `%set_cell_max_output_size_in_mb 20` raises the limit.
 
+## Checking an environment
+
+```python
+tareco.doctor(spark)      # or tareco.doctor() without Spark; `tareco --doctor` in a terminal
+```
+
+```
+OK    environment                 tareco 1.3.0, Python 3.12.3, Databricks 17.3, notebook output budget 9 MB
+OK    webgl page                  20,000 nodes, 2.0 MB, ASCII only
+OK    notebook output             60,000-node graph fits in 5.1 MB (budget 9 MB)
+OK    spark: flavor               Spark Connect, Spark 4.0.1
+OK    spark: neighborhood (join)  57 nodes within 2 hops of 'hub'
+...
+tareco doctor: all good
+```
+
+It runs every path that can break in a new place (notebook detection, output
+size, the WebGL and canvas pages, timelines, reports and, given a session,
+reading from Spark, neighborhoods, exports and timelines there, classic Spark or
+Spark Connect) and reports each one. For Databricks there is a ready notebook,
+[examples/databricks_check.py](examples/databricks_check.py): import it, run all,
+and every cell after the doctor should draw a graph.
+
 ## Spark
 
 ```python

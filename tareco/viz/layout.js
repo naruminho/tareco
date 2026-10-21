@@ -225,6 +225,8 @@ function tarecoRunLayout(input, onFrame) {
 
   let worker = null, engine = null, running = true, stopped = false, frame = 0;
   const pins = [];
+  // where the layout ended up running, for tests and for anyone debugging a sandboxed page
+  const mark = (where) => { if (typeof document !== "undefined" && document.body) document.body.dataset.layout = where; };
 
   function step() {
     frame = 0;
@@ -240,6 +242,7 @@ function tarecoRunLayout(input, onFrame) {
     if (stopped || engine) return;
     engine = tarecoLayout(input);
     for (const [i, px, py] of pins) engine.pin(i, px, py);
+    mark("main-thread");
     frame = requestAnimationFrame(step);
   }
 
@@ -248,6 +251,7 @@ function tarecoRunLayout(input, onFrame) {
     worker = new Worker(url);
     worker.onmessage = (e) => {
       if (stopped) return;
+      mark("worker");
       if (e.data.done) running = false;
       onFrame(e.data.x, e.data.y, e.data.done);
     };

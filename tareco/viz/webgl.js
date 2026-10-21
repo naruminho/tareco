@@ -165,7 +165,7 @@
         const a = G.e[2 * k], b = G.e[2 * k + 1];
         // strong links between groups stand out, weak ones nearly vanish
         const share = G.w[k] / wmax;
-        graph.addEdge("g" + a, "g" + b, { size: 0.5 + 6 * share, color: withAlpha(C.edge, 0.03 + 0.6 * share), w: G.w[k] });
+        graph.addEdge("g" + a, "g" + b, { size: 0.5 + 6 * share, share, w: G.w[k] });
         ledges.push(a, b);
         lstrength.push(0.05 + share);
       }
@@ -191,7 +191,7 @@
       const pairs = [];
       for (const e of ledges) {
         const s = E.e[2 * e], t = E.e[2 * e + 1];
-        graph.addEdgeWithKey("e" + e, String(s), String(t), { size: edgeSize ? edgeSize[e] : 0.6, color: edgeColor });
+        graph.addEdgeWithKey("e" + e, String(s), String(t), { size: edgeSize ? edgeSize[e] : 0.6 });
         pairs.push(local[s], local[t]);
       }
       ledges = pairs;
@@ -296,9 +296,12 @@
     if (period !== null && key[0] === "e" && !activeEdge(Number(key.slice(1)))) return { ...data, hidden: true };
     if (focus) {
       if (focus.edges.has(key)) return { ...data, color: focus.color, size: Math.max(1.4, data.size * 1.8), zIndex: 1 };
-      return { ...data, hidden: true };
+      // faded, not hidden: hiding would need a full re-index on every hover
+      return { ...data, color: C["edge-faint"], zIndex: 0 };
     }
-    return data;
+    // colors come from here, not from edge attributes, so a theme change is just a redraw
+    if (data.share !== undefined) return { ...data, color: withAlpha(C.edge, 0.03 + 0.6 * data.share) };
+    return { ...data, color: edgeColor };
   }
   function computeFocus() {
     if (state.path) return state.path;
@@ -312,9 +315,10 @@
       color: graph.getNodeAttribute(key, "color"),
     };
   }
-  function update() {
+  // full: something was shown or hidden, so sigma has to index again
+  function update(full) {
     focus = computeFocus();
-    renderer.refresh({ skipIndexation: true });
+    renderer.refresh(full ? undefined : { skipIndexation: true });
   }
 
   function drawHover(ctx, data, settings) {
@@ -432,7 +436,7 @@
 
   // jump to a node that may live in another view
   function reveal(i) {
-    if (state.hidden.has(N.cat[i])) { state.hidden.delete(N.cat[i]); renderLegend(); }
+    if (state.hidden.has(N.cat[i])) { state.hidden.delete(N.cat[i]); renderLegend(); update(true); }
     if (!inView || !inView[i]) buildView(state.view.kind === "group" ? { kind: "group", g: N.grp[i] } : { kind: "all" });
     return String(i);
   }
@@ -643,14 +647,8 @@
     try { localStorage.setItem("tareco-theme", theme); } catch (e) { /* sandboxed */ }
     applyTheme();
     renderer.setSetting("labelColor", { color: C.text });
-    if (state.view.kind === "overview") {
-      const wmax = Math.max(1, ...G.w);
-      graph.updateEachEdgeAttributes((key, attr) => { attr.color = withAlpha(C.edge, 0.03 + 0.6 * attr.w / wmax); return attr; }, { attributes: ["color"] });
-    } else {
-      edgeColor = withAlpha(C.edge, edgeAlpha(graph.size));
-      graph.updateEachEdgeAttributes((key, attr) => { attr.color = edgeColor; return attr; }, { attributes: ["color"] });
-    }
-    update();
+    edgeColor = withAlpha(C.edge, edgeAlpha(graph.size));
+    update(true);
   };
 
   // ----------------------------------------------------------------- header
@@ -755,7 +753,7 @@
   }
   function refreshVisibility() {
     if (state.selected && graph.hasNode(state.selected) && hiddenNode(graph.getNodeAttributes(state.selected))) clearAll();
-    else update();
+    update(true);
     renderLegend();
   }
   $("legend").addEventListener("click", (e) => {

@@ -16,7 +16,7 @@ def main(argv=None):
         prog="tareco",
         description="Draw a graph from a CSV/JSON file as an interactive web page.",
     )
-    p.add_argument("edges", help="edges file (.csv, .tsv, .json, .edges)")
+    p.add_argument("edges", nargs="?", help="edges file (.csv, .tsv, .json, .edges)")
     p.add_argument("--nodes", help="optional nodes file with attributes")
     p.add_argument("-o", "--output", help="write this HTML file instead of opening the browser")
     p.add_argument("-d", "--directed", action="store_true", help="edges have a direction")
@@ -41,8 +41,16 @@ def main(argv=None):
     p.add_argument("--hops", type=int, default=2, help="steps out for --around (default: 2)")
     p.add_argument("--patterns", action="store_true", help="print loops, fans, chains, stars and cliques")
     p.add_argument("--report", action="store_true", help="write a shareable report (with -o) instead of the bare view")
+    p.add_argument("--doctor", action="store_true", help="check that tareco works in this environment")
     p.add_argument("--version", action="version", version=f"tareco {__version__}")
     args = p.parse_args(argv)
+    if args.doctor:
+        from .checkup import doctor
+        report = doctor()
+        print(report)
+        return 0 if report.ok else 1
+    if not args.edges:
+        p.error("the edges file is required")
 
     try:
         tl = None
