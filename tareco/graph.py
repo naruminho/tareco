@@ -481,6 +481,30 @@ class Graph:
         from .algorithms.structure import density
         return density(self)
 
+    def explain(self, groups=None, lang=None, top=5, label=None, weight="weight"):
+        """The main facts about the network, in plain language ("en" or "pt").
+
+        Groups, what characterizes each one, the most important nodes, bridges
+        between groups, hubs, one-way flows and where the weight concentrates.
+        """
+        from .insights import explain
+        return explain(self, groups=groups, lang=lang, top=top, label=label, weight=weight)
+
+    def profile(self, groups=None, attrs=None, top=3, lang=None, label=None):
+        """What characterizes each group (communities by default) compared with the whole network."""
+        from .insights import profile
+        return profile(self, groups=groups, attrs=attrs, top=top, lang=lang, label=label)
+
+    def project(self, nodes, method="count", min_shared=1, max_item_size=1000):
+        """Treat the graph as two-sided and link ``nodes`` that share neighbors.
+
+        ``nodes`` is the side to keep (an iterable, or a predicate on
+        ``(node, attrs)``). See ``tareco.project`` for the methods.
+        """
+        from .bipartite import project_graph
+        return project_graph(self, nodes, method=method, min_shared=min_shared,
+                             max_item_size=max_item_size)
+
     def summary(self):
         """Headline numbers about the graph."""
         from .algorithms.structure import summary

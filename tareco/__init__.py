@@ -10,10 +10,12 @@ from . import algorithms, generators
 from .errors import EdgeNotFound, HasCycle, NodeNotFound, NoPath, NotConnected, TarecoError
 from .generators import (community_graph, complete_graph, cycle_graph, grid_graph, path_graph,
                          random_graph, scale_free_graph, small_world_graph, star_graph)
+from .bipartite import project
 from .graph import Graph
+from .i18n import set_language
 from .io import read_csv, read_json
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 _LOAD_OPTIONS = ("directed", "nodes", "source", "target", "node_id", "max_rows")
 
@@ -44,7 +46,8 @@ def save(data, path, **options):
 
 
 __all__ = [
-    "Graph", "show", "save", "read_csv", "read_json", "algorithms", "generators",
+    "Graph", "show", "save", "read_csv", "read_json", "project", "set_language",
+    "algorithms", "generators",
     "complete_graph", "path_graph", "cycle_graph", "star_graph", "grid_graph", "random_graph",
     "scale_free_graph", "small_world_graph", "community_graph",
     "TarecoError", "NodeNotFound", "EdgeNotFound", "NoPath", "NotConnected", "HasCycle",

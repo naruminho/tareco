@@ -11,6 +11,8 @@
   const root = document.documentElement;
   const container = document.getElementById("graph");
   const $ = (id) => document.getElementById(id);
+  const T = tarecoText(cfg.lang);
+  const insights = cfg.insights || [];
   const ICON = { chevron: '<svg class="icon sep" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>' };
 
   document.body.classList.add("is-webgl");
@@ -44,9 +46,9 @@
   }
   function fmt(v) {
     if (typeof v === "number") {
-      if (Number.isInteger(v)) return v.toLocaleString("en-US");
+      if (Number.isInteger(v)) return v.toLocaleString(T.locale);
       if (v !== 0 && Math.abs(v) < 0.001) return v.toExponential(2);
-      return String(Number(v.toPrecision(4)));
+      return Number(v.toPrecision(4)).toLocaleString(T.locale, { maximumFractionDigits: 6 });
     }
     if (v === null || v === undefined) return "";
     if (typeof v === "object") return JSON.stringify(v);
@@ -58,7 +60,7 @@
     return m && m.length >= 3 ? `rgba(${m[0]},${m[1]},${m[2]},${alpha.toFixed(3)})` : css;
   }
   // dense graphs need fainter edges, or the overlap turns into a white blob
-  const edgeAlpha = (count) => Math.max(0.035, Math.min(0.3, 6 / Math.sqrt(Math.max(1, count))));
+  const edgeAlpha = (count) => Math.max(0.03, Math.min(0.3, 4 / Math.sqrt(Math.max(1, count))));
   const radius = new Float32Array(n);
   for (let i = 0; i < n; i++) radius[i] = 1.4 + Math.sqrt(N.size[i]) * 1.1;
   let edgeSize = null;
@@ -90,6 +92,7 @@
     pathStart: null,
     path: null,
     hidden: new Set(),
+    spot: null,
     labels: true,
   };
   let graph = null, renderer = null, layout = null, focus = null;
@@ -113,7 +116,7 @@
     frameScheduled = false;
     clearTimeout(applyTimer);
     localOf = new Map();
-    state.hover = state.selected = state.pathStart = state.path = null;
+    state.hover = state.selected = state.pathStart = state.path = state.spot = null;
     focus = null;
     $("panel").hidden = true;
 
@@ -125,7 +128,7 @@
       lx = []; ly = []; lr = [];
       for (let gi = 0; gi < groupCount; gi++) {
         const r = 4 + 22 * Math.sqrt(G.size[gi] / biggest);
-        graph.addNode("g" + gi, { x: G.x[gi], y: G.y[gi], size: r, color: G.color[gi], label: G.label[gi], count: G.size[gi], g: gi });
+        graph.addNode("g" + gi, { x: G.x[gi], y: G.y[gi], size: r, color: G.color[gi], label: G.label[gi], count: G.size[gi], note: G.note[gi], g: gi });
         localOf.set("g" + gi, gi);
         lx.push(G.x[gi]); ly.push(G.y[gi]); lr.push(r * 2.5);
       }
@@ -272,6 +275,7 @@
   }
   function computeFocus() {
     if (state.path) return state.path;
+    if (state.spot) return state.spot;
     const key = state.hover || state.selected;
     if (!key || !graph.hasNode(key)) return null;
     return {
@@ -288,8 +292,10 @@
 
   function drawHover(ctx, data, settings) {
     const size = settings.labelSize;
-    const count = graph && graph.hasNode(data.key) ? graph.getNodeAttribute(data.key, "count") : undefined;
-    const label = (data.label || "") + (count !== undefined ? `  ${fmt(count)}` : "");
+    const known = graph && graph.hasNode(data.key);
+    const count = known ? graph.getNodeAttribute(data.key, "count") : undefined;
+    const note = known ? graph.getNodeAttribute(data.key, "note") : undefined;
+    const label = (data.label || "") + (count !== undefined ? `  ${fmt(count)}` : "") + (note ? ` \u00b7 ${note}` : "");
     ctx.beginPath();
     ctx.arc(data.x, data.y, data.size + 2.5, 0, Math.PI * 2);
     ctx.lineWidth = 2;
@@ -375,6 +381,7 @@
 
   function select(key) {
     state.selected = key;
+    state.spot = null;
     state.path = null;
     state.pathStart = null;
     showNodePanel(key);
@@ -383,6 +390,7 @@
   }
   function clearAll() {
     state.selected = null;
+    state.spot = null;
     state.path = null;
     state.pathStart = null;
     $("panel").hidden = true;
@@ -428,7 +436,7 @@
     if (key === state.pathStart) return;
     const p = findPath(state.pathStart, key);
     if (!p) {
-      toast(`No path from ${graph.getNodeAttribute(state.pathStart, "label")} to ${graph.getNodeAttribute(key, "label")}`);
+      toast(T.noPath(graph.getNodeAttribute(state.pathStart, "label"), graph.getNodeAttribute(key, "label")));
       return;
     }
     state.path = p;
@@ -495,17 +503,17 @@
     $("btn-pin").hidden = false;
     $("btn-pin").classList.toggle("on", !!graph.getNodeAttribute(key, "pinned"));
     const metrics = Object.keys(N.metrics).map((k) => [k, N.metrics[k][i]]);
-    if (groupCount > 1 && !(cfg.groupTitle in N.metrics) && !(cfg.groupTitle in N.attrs)) {
-      metrics.push([cfg.groupTitle, G.label[N.grp[i]]]);
+    if (groupCount > 1 && !(cfg.groupName in N.metrics) && !(cfg.groupTitle in N.attrs)) {
+      metrics.push([cfg.groupName, G.label[N.grp[i]]]);
     }
-    let html = `<div class="section-title">Metrics</div>${kv(metrics)}`;
+    let html = `<div class="section-title">${T.metrics}</div>${kv(metrics)}`;
     const attrs = kv(Object.keys(N.attrs).map((k) => [k, N.attrs[k][i]]));
-    if (attrs) html += `<div class="section-title">Attributes</div>${attrs}`;
+    if (attrs) html += `<div class="section-title">${T.attributes}</div>${attrs}`;
     const nbrs = [...new Set(nbList.subarray(nbStart[i], nbStart[i + 1]))].filter((j) => j !== i);
     if (nbrs.length) {
       nbrs.sort((a, b) => N.size[b] - N.size[a]);
       const shown = nbrs.slice(0, 80);
-      html += `<div class="section-title">Neighbors <span class="muted">${fmt(nbrs.length)}</span></div><div class="chips">${shown.map(chip).join("")}`;
+      html += `<div class="section-title">${T.neighbors} <span class="muted">${fmt(nbrs.length)}</span></div><div class="chips">${shown.map(chip).join("")}`;
       if (nbrs.length > shown.length) html += `<span class="muted">+${fmt(nbrs.length - shown.length)}</span>`;
       html += "</div>";
     }
@@ -514,15 +522,64 @@
   }
   function showPathPanel(p) {
     $("panel-dot").hidden = true;
-    $("panel-title").textContent = `${p.list.length - 1} ${p.list.length === 2 ? "step" : "steps"}`;
+    $("panel-title").textContent = `${p.list.length - 1} ${p.list.length === 2 ? T.step : T.steps}`;
     $("btn-pin").hidden = true;
-    $("panel-body").innerHTML = `<div class="section-title">Path</div><div class="chips">${p.list.map((k) => chip(Number(k))).join(ICON.chevron)}</div>`;
+    $("panel-body").innerHTML = `<div class="section-title">${T.pathTitle}</div><div class="chips">${p.list.map((k) => chip(Number(k))).join(ICON.chevron)}</div>`;
     $("panel").hidden = false;
+  }
+  // plain-language findings; clicking one lights up the nodes it talks about
+  const groupColor = (label) => {
+    const gi = G.key.indexOf(label);
+    return cfg.groupTitle === "community" && gi >= 0 ? G.color[gi] : null;
+  };
+  function showInsights(active) {
+    state.selected = null;
+    state.path = null;
+    $("panel-dot").hidden = true;
+    $("panel-title").textContent = T.insights;
+    $("btn-pin").hidden = true;
+    $("panel-body").innerHTML = `<div class="findings">${tarecoInsightsHtml(insights, groupColor, esc)}</div>`;
+    if (active !== undefined) markFinding(active);
+    $("panel").hidden = false;
+    update();
+  }
+  function markFinding(k) {
+    for (const el of document.querySelectorAll(".finding")) el.classList.toggle("on", el.dataset.k === String(k));
+  }
+  function spotlight(k) {
+    const f = insights[k];
+    if (!f.nodes.length) return;
+    const gi = f.kind === "group" && cfg.groupTitle === "community" ? G.key.indexOf(f.group) : -1;
+    if (gi >= 0 && groupCount > 1) {
+      buildView({ kind: "group", g: gi });
+      showInsights(k);
+      return;
+    }
+    if (state.view.kind === "overview" || f.nodes.some((i) => !inView[i])) {
+      buildView({ kind: "all" });
+      showInsights(k);
+    }
+    const keys = f.nodes.map(String).filter((key) => graph.hasNode(key));
+    const set = new Set(keys);
+    const edges = new Set();
+    for (const key of keys) {
+      for (const e of graph.edges(key)) {
+        if (set.has(graph.source(e)) && set.has(graph.target(e))) edges.add(e);
+      }
+    }
+    state.spot = { nodes: set, edges, center: null, color: C.accent };
+    markFinding(k);
+    update();
+    fitKeys(keys);
   }
   $("panel-body").addEventListener("click", (e) => {
     const b = e.target.closest(".chip");
-    if (b) select(reveal(Number(b.dataset.id)));
+    if (b) return select(reveal(Number(b.dataset.id)));
+    const f = e.target.closest("button.finding");
+    if (f) spotlight(Number(f.dataset.k));
   });
+  $("btn-insights").hidden = insights.length === 0;
+  $("btn-insights").onclick = () => showInsights();
   $("btn-close").onclick = clearAll;
   $("btn-pin").onclick = () => { if (state.selected) setPinned(state.selected, !graph.getNodeAttribute(state.selected, "pinned")); };
 
@@ -531,7 +588,7 @@
   function setPhysicsButton(running) {
     const b = $("btn-physics");
     b.classList.toggle("on", !running);
-    b.dataset.tip = running ? "Freeze layout" : "Resume layout";
+    b.dataset.tip = running ? T.freeze : T.resume;
   }
   $("btn-fit").onclick = () => {
     renderer.setCustomBBox(null);
@@ -569,13 +626,13 @@
 
   $("title").textContent = cfg.title || "";
   function counted(shown, total, word) {
-    return shown < total ? `${fmt(shown)} of ${fmt(total)} ${word}` : `${fmt(total)} ${word}`;
+    return shown < total ? `${fmt(shown)} ${T.of} ${fmt(total)} ${word}` : `${fmt(total)} ${word}`;
   }
   function renderCounts() {
     const t = cfg.total;
     $("counts").textContent = state.view.kind === "overview"
-      ? `${fmt(groupCount)} groups \u00b7 ${fmt(t.nodes)} nodes`
-      : `${counted(cfg.counts.nodes, t.nodes, "nodes")} \u00b7 ${counted(cfg.counts.edges, t.edges, "edges")}`;
+      ? `${fmt(groupCount)} ${T.groupsWord} \u00b7 ${fmt(t.nodes)} ${T.nodes}`
+      : `${counted(cfg.counts.nodes, t.nodes, T.nodes)} \u00b7 ${counted(cfg.counts.edges, t.edges, T.edges)}`;
   }
   function renderCrumb() {
     const v = state.view;
@@ -583,7 +640,8 @@
     if (v.kind !== "group") return;
     $("crumb-dot").style.background = G.color[v.g];
     $("crumb-name").textContent = G.label[v.g];
-    $("crumb-count").textContent = counted(G.shown[v.g], G.size[v.g], "nodes");
+    const note = G.note[v.g];
+    $("crumb-count").textContent = counted(G.shown[v.g], G.size[v.g], T.nodes) + (note ? ` \u00b7 ${note}` : "");
   }
 
   // ----------------------------------------------------------------- search
@@ -647,11 +705,11 @@
       const items = legendAll ? legend.items : legend.items.slice(0, LEGEND_LIMIT);
       html += legend.title ? `<div class="legend-title">${esc(legend.title)}</div>` : "";
       html += items.map((it, k) => {
-        const name = it.missing ? '<span class="none">none</span>' : esc(it.label);
+        const name = it.missing ? `<span class="none">${T.none}</span>` : esc(it.label) + (it.note ? `<span class="note">${esc(it.note)}</span>` : "");
         return `<button class="legend-item${state.hidden.has(k) ? " off" : ""}" data-k="${k}"><span class="dot" style="background:${it.color}"></span><span class="name">${name}</span><span class="count">${fmt(it.count)}</span></button>`;
       }).join("");
       if (legend.items.length > LEGEND_LIMIT) {
-        html += `<button class="legend-more" data-more="1">${legendAll ? "Less" : `+${legend.items.length - LEGEND_LIMIT} more`}</button>`;
+        html += `<button class="legend-more" data-more="1">${legendAll ? T.less : T.more(legend.items.length - LEGEND_LIMIT)}</button>`;
       }
     } else if (legend && legend.kind === "scale") {
       html += legend.title ? `<div class="legend-title">${esc(legend.title)}</div>` : "";

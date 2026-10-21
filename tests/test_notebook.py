@@ -38,3 +38,10 @@ def test_show_and_repr_render_inline_without_noise():
     assert "force-graph" in html_outputs(show)[0]
     assert "sigma" in html_outputs(big)[0]
     assert len(html_outputs(big)[0]) < 25e6
+
+
+def test_explain_renders_as_markdown():
+    (cell,) = run('tareco.Graph([("ana", "bia"), ("bia", "caio")]).explain(lang="pt")')
+    data = [o["data"] for o in cell.outputs if "data" in o][0]
+    assert data["text/markdown"].startswith("**O que esta rede mostra**")
+    assert "text/plain" in data

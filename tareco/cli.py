@@ -5,6 +5,7 @@ import sys
 
 from . import __version__
 from .errors import TarecoError
+from .bipartite import project
 from .graph import Graph
 
 
@@ -29,18 +30,28 @@ def main(argv=None):
                    help="canvas for small graphs, WebGL for big ones (default: auto)")
     p.add_argument("--max-nodes", type=int, help="keep only this many of the most important nodes")
     p.add_argument("--summary", action="store_true", help="print headline numbers and exit")
+    p.add_argument("--explain", action="store_true", help="print what the network shows, in plain words")
+    p.add_argument("--lang", choices=("en", "pt"), help="language of the explanation and the page")
+    p.add_argument("--project", nargs=2, metavar=("NODES", "VIA"),
+                   help="two-sided table: link NODES that share VIA (e.g. --project cliente produto)")
     p.add_argument("--version", action="version", version=f"tareco {__version__}")
     args = p.parse_args(argv)
 
     try:
-        g = Graph(args.edges, nodes=args.nodes, directed=args.directed or None,
-                  source=args.source, target=args.target)
+        if args.project:
+            g = project(args.edges, nodes=args.project[0], via=args.project[1])
+        else:
+            g = Graph(args.edges, nodes=args.nodes, directed=args.directed or None,
+                      source=args.source, target=args.target)
         if args.summary:
             print(g.summary())
             return 0
+        if args.explain:
+            print(g.explain(lang=args.lang, label=args.label))
+            return 0
         view = dict(color=args.color, size=args.size, label=args.label, title=args.title,
                     dim=args.dim, particles=args.particles, renderer=args.renderer,
-                    max_nodes=args.max_nodes)
+                    max_nodes=args.max_nodes, lang=args.lang)
         if args.output:
             print(g.save(args.output, **view))
         else:

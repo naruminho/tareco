@@ -54,7 +54,7 @@ def test_webgl_payload_is_consistent():
     assert all(0 <= k < len(legend["items"]) for k in nodes["cat"])
     assert len(groups["e"]) == 2 * len(groups["w"])
     assert p["config"]["groupTitle"] == "community"
-    assert groups["label"][0].startswith("Community ")
+    assert groups["label"][0] == "Group 1"  # same words as explain()
     assert build_webgl_payload(g) == p  # seeded, so repeatable
 
 

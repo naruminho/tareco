@@ -9,6 +9,8 @@
   const FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   const root = document.documentElement;
   const $ = (id) => document.getElementById(id);
+  const T = tarecoText(cfg.lang);
+  const insights = cfg.insights || [];
   const ICON = {
     chevron: '<svg class="icon sep" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>',
     arrow: '<svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
@@ -79,9 +81,9 @@
   }
   function fmt(v) {
     if (typeof v === "number") {
-      if (Number.isInteger(v)) return v.toLocaleString("en-US");
+      if (Number.isInteger(v)) return v.toLocaleString(T.locale);
       if (v !== 0 && Math.abs(v) < 0.001) return v.toExponential(2);
-      return String(Number(v.toPrecision(4)));
+      return Number(v.toPrecision(4)).toLocaleString(T.locale, { maximumFractionDigits: 6 });
     }
     if (v === null || v === undefined) return "";
     if (typeof v === "object") return JSON.stringify(v);
@@ -99,11 +101,13 @@
     hidden: new Set(),
     labels: true,
     frozen: false,
+    spot: null,
   };
   let focus = null;
 
   function computeFocus() {
     if (state.path) return state.path;
+    if (state.spot) return state.spot;
     const n = state.hover || state.selected;
     if (!n) return null;
     return { nodes: new Set([n, ...n.nbrs]), links: new Set(n.links), center: n };
@@ -186,7 +190,7 @@
   function linkColor(l) {
     if (!focus) return C.edge;
     if (!focus.links.has(l)) return C["edge-faint"];
-    if (state.path) return C.accent;
+    if (state.path || !focus.center) return C.accent;
     return fade(focus.center.color, 0.85);
   }
   function linkWidth(l) {
@@ -251,6 +255,7 @@
   }
   function select(n) {
     state.selected = n;
+    state.spot = null;
     state.path = null;
     state.pathStart = null;
     showNodePanel(n);
@@ -259,6 +264,7 @@
   }
   function clearAll() {
     state.selected = null;
+    state.spot = null;
     state.path = null;
     state.pathStart = null;
     $("panel").hidden = true;
@@ -320,7 +326,7 @@
     if (n === state.pathStart) return;
     const p = findPath(state.pathStart, n);
     if (!p) {
-      toast(`No path from ${state.pathStart.label} to ${n.label}`);
+      toast(T.noPath(state.pathStart.label, n.label));
       return;
     }
     state.path = p;
@@ -374,11 +380,11 @@
     $("btn-pin").classList.toggle("on", !!n.pinned);
     const nbrs = [...n.nbrs].filter((m) => m !== n).sort((a, b) => b.val - a.val);
     const shown = nbrs.slice(0, 80);
-    let html = `<div class="section-title">Metrics</div>${kv(n.metrics)}`;
+    let html = `<div class="section-title">${T.metrics}</div>${kv(n.metrics)}`;
     const attrs = kv(n.attrs);
-    if (attrs) html += `<div class="section-title">Attributes</div>${attrs}`;
+    if (attrs) html += `<div class="section-title">${T.attributes}</div>${attrs}`;
     if (nbrs.length) {
-      html += `<div class="section-title">Neighbors <span class="muted">${nbrs.length}</span></div><div class="chips">${shown.map(chip).join("")}`;
+      html += `<div class="section-title">${T.neighbors} <span class="muted">${fmt(nbrs.length)}</span></div><div class="chips">${shown.map(chip).join("")}`;
       if (nbrs.length > shown.length) html += `<span class="muted">+${nbrs.length - shown.length}</span>`;
       html += "</div>";
     }
@@ -387,15 +393,46 @@
   }
   function showPathPanel(p) {
     $("panel-dot").hidden = true;
-    $("panel-title").textContent = `${p.list.length - 1} ${p.list.length === 2 ? "step" : "steps"}`;
+    $("panel-title").textContent = `${p.list.length - 1} ${p.list.length === 2 ? T.step : T.steps}`;
     $("btn-pin").hidden = true;
-    $("panel-body").innerHTML = `<div class="section-title">Path</div><div class="chips">${p.list.map(chip).join(ICON.chevron)}</div>`;
+    $("panel-body").innerHTML = `<div class="section-title">${T.pathTitle}</div><div class="chips">${p.list.map(chip).join(ICON.chevron)}</div>`;
     $("panel").hidden = false;
+  }
+
+  // plain-language findings; clicking one lights up the nodes it talks about
+  const groupColor = (label) => {
+    const it = cfg.legend && cfg.legend.kind === "category" && cfg.legend.metric === "community"
+      ? cfg.legend.items.find((x) => x.label === label) : null;
+    return it ? it.color : null;
+  };
+  function showInsights() {
+    state.selected = null;
+    state.path = null;
+    $("panel-dot").hidden = true;
+    $("panel-title").textContent = T.insights;
+    $("btn-pin").hidden = true;
+    $("panel-body").innerHTML = `<div class="findings">${tarecoInsightsHtml(insights, groupColor, esc)}</div>`;
+    $("panel").hidden = false;
+    update();
+  }
+  function spotlight(k) {
+    const list = insights[k].nodes.map((i) => byId.get(i)).filter((n) => n && visible(n));
+    if (!list.length) return;
+    const set = new Set(list);
+    const ls = new Set(links.filter((l) => { const [a, b] = ends(l); return set.has(a) && set.has(b); }));
+    state.spot = { nodes: set, links: ls, center: null };
+    for (const el of document.querySelectorAll(".finding")) el.classList.toggle("on", el.dataset.k === String(k));
+    update();
+    fitNodes(list);
   }
   $("panel-body").addEventListener("click", (e) => {
     const b = e.target.closest(".chip");
-    if (b) select(byId.get(Number(b.dataset.id)));
+    if (b) return select(byId.get(Number(b.dataset.id)));
+    const f = e.target.closest("button.finding");
+    if (f) spotlight(Number(f.dataset.k));
   });
+  $("btn-insights").hidden = insights.length === 0;
+  $("btn-insights").onclick = showInsights;
   $("btn-close").onclick = clearAll;
   $("btn-pin").onclick = () => { if (state.selected) setPinned(state.selected, !state.selected.pinned); };
 
@@ -409,7 +446,7 @@
   $("btn-physics").onclick = (e) => {
     state.frozen = !state.frozen;
     e.currentTarget.classList.toggle("on", state.frozen);
-    e.currentTarget.dataset.tip = state.frozen ? "Resume layout" : "Freeze layout";
+    e.currentTarget.dataset.tip = state.frozen ? T.resume : T.freeze;
     for (const n of nodes) {
       if (n.pinned) continue;
       if (state.frozen) { n.fx = n.x; n.fy = n.y; if (is3D) n.fz = n.z; }
@@ -451,9 +488,9 @@
 
   $("title").textContent = cfg.title || "";
   const counted = (shown, total, word) =>
-    shown < total ? `${fmt(shown)} of ${fmt(total)} ${word}` : `${fmt(total)} ${word}`;
+    shown < total ? `${fmt(shown)} ${T.of} ${fmt(total)} ${word}` : `${fmt(total)} ${word}`;
   const total = cfg.total || cfg.counts;
-  $("counts").textContent = `${counted(cfg.counts.nodes, total.nodes, "nodes")} \u00b7 ${counted(cfg.counts.edges, total.edges, "edges")}`;
+  $("counts").textContent = `${counted(cfg.counts.nodes, total.nodes, T.nodes)} \u00b7 ${counted(cfg.counts.edges, total.edges, T.edges)}`;
 
   // ----------------------------------------------------------------- search
 
@@ -520,11 +557,12 @@
       html += legend.title ? `<div class="legend-title">${esc(legend.title)}</div>` : "";
       html += items.map((it) => {
         const key = it.missing ? "" : it.label;
-        const name = it.missing ? '<span class="none">none</span>' : esc(it.label);
-        return `<button class="legend-item${state.hidden.has(key) ? " off" : ""}" data-key="${esc(key)}"><span class="dot" style="background:${it.color}"></span><span class="name">${name}</span><span class="count">${fmt(it.count)}</span></button>`;
+        const name = it.missing ? `<span class="none">${T.none}</span>` : esc(it.label);
+        const note = it.note ? `<span class="note">${esc(it.note)}</span>` : "";
+        return `<button class="legend-item${state.hidden.has(key) ? " off" : ""}" data-key="${esc(key)}"><span class="dot" style="background:${it.color}"></span><span class="name">${name}${note}</span><span class="count">${fmt(it.count)}</span></button>`;
       }).join("");
       if (legend.items.length > LEGEND_LIMIT) {
-        html += `<button class="legend-more" data-more="1">${legendAll ? "Less" : `+${legend.items.length - LEGEND_LIMIT} more`}</button>`;
+        html += `<button class="legend-more" data-more="1">${legendAll ? T.less : T.more(legend.items.length - LEGEND_LIMIT)}</button>`;
       }
     } else if (legend && legend.kind === "scale") {
       html += legend.title ? `<div class="legend-title">${esc(legend.title)}</div>` : "";

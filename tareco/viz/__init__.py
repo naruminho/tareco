@@ -19,6 +19,7 @@ import webbrowser
 from decimal import Decimal
 from importlib import resources
 
+from .. import i18n
 from ..errors import TarecoError
 from ..io import json_default
 
@@ -47,7 +48,7 @@ NOTEBOOK_BUDGET_MB = 25
 
 def to_html(g, color=None, size=None, label=None, edge_width=None, title=None, dim=2,
             particles=False, theme="auto", renderer="auto", max_nodes=None, max_edges=None,
-            budget_mb=None):
+            budget_mb=None, lang=None, insights=True):
     """The interactive view as a standalone HTML document (string).
 
     color       attribute name, a metric ("community", "pagerank", "degree",
@@ -66,9 +67,13 @@ def to_html(g, color=None, size=None, label=None, edge_width=None, title=None, d
     max_edges   nodes (and heaviest edges). Defaults: 50,000/200,000 for WebGL,
                 3,000/12,000 for canvas and 3D.
     budget_mb   shrink the graph until the page fits in this many megabytes.
+    lang        "en" or "pt" for the interface and the insights (default:
+                tareco.set_language, else English).
+    insights    add the plain-language findings of ``explain()`` to the view.
     """
     return _build(g, dict(color=color, size=size, label=label, edge_width=edge_width,
-                          title=title, dim=dim, particles=particles, theme=theme),
+                          title=title, dim=dim, particles=particles, theme=theme,
+                          lang=lang, insights=insights),
                   renderer, max_nodes, max_edges, budget_mb, wrap=None)
 
 
@@ -203,14 +208,14 @@ def _document(g, kind, options, max_nodes, max_edges, metric):
         payload = build_webgl_payload(g, nodes, triples, metric, **options)
         lib = "".join(f"<script>{_asset(name)}</script>"
                       for name in ("graphology.umd.min.js", "sigma.min.js"))
-        app = _asset("layout.js") + "\n" + _asset("webgl.js")
+        app = _asset("i18n.js") + "\n" + _asset("layout.js") + "\n" + _asset("webgl.js")
     else:
         payload = build_payload(g, nodes, triples, metric, **options)
         if kind == "3d":
             lib = f'<script src="{LIB_3D}"></script>'
         else:
             lib = "<script>" + _asset("force-graph.min.js") + "</script>"
-        app = _asset("app.js")
+        app = _asset("i18n.js") + "\n" + _asset("app.js")
     # ASCII only: the page may be embedded in a notebook that decodes it with any charset
     data = json.dumps(payload, default=json_default, ensure_ascii=True,
                       separators=(",", ":")).replace("<", "\\u003c")
@@ -312,7 +317,8 @@ def _config(g, nodes, triples, title, theme, legend, size, **extra):
 # ------------------------------------------------------------- canvas payload
 
 def build_payload(g, nodes=None, triples=None, metric=None, color=None, size=None, label=None,
-                  edge_width=None, title=None, dim=2, particles=False, theme="auto"):
+                  edge_width=None, title=None, dim=2, particles=False, theme="auto", lang=None,
+                  insights=True):
     """Data for the canvas/3D view: one object per node and per link."""
     if nodes is None:
         nodes = list(g)
@@ -321,6 +327,7 @@ def build_payload(g, nodes=None, triples=None, metric=None, color=None, size=Non
     metric = metric or _metric_cache(g)
     color, size = _defaults(g, color, size)
     colors, groups, legend = _colors(g, nodes, color, metric)
+    lang, findings, notes, _ = _insights(g, nodes, metric, legend, color, lang, label, insights)
     sizes = _sizes(g, nodes, size, metric)
     shown = _shown_metrics(g, color, size, metric)
     edge_width = _edge_width_attr(edge_width, triples)
@@ -339,7 +346,7 @@ def build_payload(g, nodes=None, triples=None, metric=None, color=None, size=Non
             "val": sizes[i],
             "group": groups[i],
             "attrs": attrs,
-            "metrics": {k: v[n] for k, v in shown.items()},
+            "metrics": {i18n.metric_name(k, lang): v[n] for k, v in shown.items()},
         })
     out_links = []
     for (u, v, d), w in zip(triples, widths):
@@ -347,8 +354,9 @@ def build_payload(g, nodes=None, triples=None, metric=None, color=None, size=Non
         out_links.append({"source": index[u], "target": index[v], "w": w, "curve": curve, "attrs": d})
 
     return {
-        "config": _config(g, nodes, triples, title, theme, legend, size, renderer="canvas",
-                          dim=dim, particles=bool(particles)),
+        "config": _localize(_config(g, nodes, triples, title, theme, legend, size, renderer="canvas",
+                                    dim=dim, particles=bool(particles), lang=lang, insights=findings),
+                            lang),
         "nodes": out_nodes,
         "links": out_links,
     }
@@ -371,7 +379,7 @@ def _label(node, attrs, label):
 
 def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, size=None,
                         label=None, edge_width=None, title=None, dim=2, particles=False,
-                        theme="auto"):
+                        theme="auto", lang=None, insights=True):
     """Data for the WebGL view, column by column to keep big pages small."""
     if nodes is None:
         nodes = list(g)
@@ -382,7 +390,10 @@ def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, si
     colors, cats, legend = _colors(g, nodes, color, metric)
     sizes = _sizes(g, nodes, size, metric)
     shown = _shown_metrics(g, color, size, metric)
-    group_of, groups, group_title = _overview_groups(g, color, legend, metric)
+    lang, findings, notes, community_notes = _insights(g, nodes, metric, legend, color, lang, label,
+                                                       insights)
+    group_of, groups, group_title = _overview_groups(g, color, legend, metric, lang)
+    group_notes = notes if legend and legend["kind"] == "category" else community_notes
     index = {n: i for i, n in enumerate(nodes)}
     grp = [group_of[n] for n in nodes]
     xs, ys, gx, gy = _seed_positions(grp, len(groups))
@@ -410,10 +421,11 @@ def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, si
     gedges, gweights = _group_edges(g, group_of)
 
     return {
-        "config": _config(g, nodes, triples, title, theme, legend, size, renderer="webgl",
-                          groupTitle=group_title,
+        "config": _localize(_config(g, nodes, triples, title, theme, legend, size, renderer="webgl",
+                          groupTitle=group_title, lang=lang, insights=findings,
                           start="overview" if (len(nodes) > OVERVIEW_START[0]
-                                               or len(plain) > OVERVIEW_START[1]) else "nodes"),
+                                               or len(plain) > OVERVIEW_START[1]) else "nodes",
+                          groupName=i18n.metric_name(group_title, lang)), lang),
         "nodes": {
             "label": [_label(n, g.nodes[n], label) for n in nodes],
             "colors": palette,
@@ -423,12 +435,14 @@ def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, si
             "y": ys,
             "cat": [cat_index.get(k, -1) if k is not None else -1 for k in cats],
             "grp": grp,
-            "metrics": {k: [_compact(v[n]) for n in nodes] for k, v in shown.items()},
+            "metrics": {i18n.metric_name(k, lang): [_compact(v[n]) for n in nodes] for k, v in shown.items()},
             "attrs": {c: [g.nodes[n].get(c) for n in nodes] for c in columns},
         },
         "edges": {"e": flat, "w": widths},
         "groups": {
             "label": [grp_["label"] for grp_ in groups],
+            "key": [grp_.get("key") for grp_ in groups],
+            "note": [group_notes.get(grp_.get("key")) for grp_ in groups],
             "color": [grp_["color"] for grp_ in groups],
             "size": sizes_g,
             "shown": shown_counts,
@@ -440,13 +454,57 @@ def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, si
     }
 
 
+def _insights(g, nodes, metric, legend, color, lang, label, enabled):
+    """``(lang, findings, legend notes, community notes)`` for the view."""
+    lang = i18n.get_language(lang)
+    if not enabled or not len(g):
+        return lang, [], {}, {}
+    from ..insights import explain, profile
+    communities = None
+    rank = None
+    if g.edge_count:
+        by_label = {}
+        for node, c in metric("community").items():
+            by_label.setdefault(c, set()).add(node)
+        communities = [by_label[k] for k in sorted(by_label)]
+        rank = metric("pagerank")
+    exp = explain(g, lang=lang, label=label, communities=communities, pagerank=rank)
+    index = {n: i for i, n in enumerate(nodes)}
+    findings = [{"kind": f.kind, "text": f.text, "group": f.group,
+                 "nodes": [index[x] for x in f.nodes if x in index][:2000]}
+                for f in exp.findings]
+    community_notes = {p.label: p.traits[0].short(lang) for p in exp.profiles if p.traits}
+    notes = {}
+    if legend and legend["kind"] == "category":
+        if color == "community":
+            notes = community_notes
+        elif isinstance(color, str) and color not in METRICS:
+            by_value = profile(g, groups=color, lang=lang, label=label, pagerank=rank)
+            notes = {p.label: p.traits[0].short(lang) for p in by_value if p.traits}
+        for item in legend["items"]:
+            if not item.get("missing") and item["label"] in notes:
+                item["note"] = notes[item["label"]]
+    return lang, findings, notes, community_notes
+
+
+def _localize(config, lang):
+    """Show built-in metric names in the page language; keep the raw name for the code."""
+    legend = config.get("legend")
+    if legend and isinstance(legend.get("title"), str):
+        legend["metric"] = legend["title"]
+        legend["title"] = i18n.metric_name(legend["title"], lang)
+    if config.get("size"):
+        config["size"] = i18n.metric_name(config["size"], lang)
+    return config
+
+
 def _compact(value):
     if isinstance(value, float):
         return float(f"{value:.5g}")
     return value
 
 
-def _overview_groups(g, color, legend, metric):
+def _overview_groups(g, color, legend, metric, lang="en"):
     """One group per category (or community) over the whole graph, biggest first."""
     every = list(g)
     if legend and legend["kind"] == "category":
@@ -471,14 +529,18 @@ def _overview_groups(g, color, legend, metric):
     slot = {}
     for i, k in enumerate(top):
         slot[k] = i
-        if title in GROUP_METRICS:
-            name = f"{title.capitalize()} {k}"
+        if title == "community":
+            name = f"{i18n.text(lang, 'group')} {k}"  # same words as explain()
+        elif title in GROUP_METRICS:
+            name = f"{i18n.metric_name(title, lang).capitalize()} {k}"
         else:
             name = k if k else "none"
-        groups.append({"label": name, "color": palette.get(k) or _category_color(i), "size": counts[k]})
+        groups.append({"label": name, "key": k, "color": palette.get(k) or _category_color(i),
+                       "size": counts[k]})
     if len(order) > len(top):
         rest = len(groups)
-        groups.append({"label": f"{len(order) - len(top):,} smaller groups", "color": MISSING_COLOR,
+        groups.append({"label": i18n.text(lang, "smaller_groups", k=i18n.number(len(order) - len(top), lang)),
+                       "color": MISSING_COLOR,
                        "size": sum(counts[k] for k in order[len(top):])})
         for k in order[len(top):]:
             slot[k] = rest

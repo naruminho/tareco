@@ -160,6 +160,32 @@ def _spark_rows(df, max_rows):
         yield _row_dict(row)
 
 
+def iter_table(data, max_rows=MAX_ROWS):
+    """``(columns, rows)`` for anything tabular: files, DataFrames, Spark, records or tuples."""
+    data = _resolve(data)
+    table = _tabular(data, max_rows)
+    if table is not None:
+        return table
+    if isinstance(data, (str, bytes, dict)):
+        raise TarecoError("expected a table: a file, a DataFrame or a list of rows")
+    try:
+        items = [x for x in data if x is not None]
+    except TypeError:
+        raise TarecoError(f"cannot read a table from {type(data).__name__}") from None
+    if not items:
+        return [], []
+    first = items[0]
+    if hasattr(first, "asDict"):
+        rows = [_row_dict(r) for r in items]
+    elif isinstance(first, dict):
+        rows = items
+    elif isinstance(first, (tuple, list)):
+        rows = [dict(enumerate(r)) for r in items]
+    else:
+        raise TarecoError("expected rows as dicts or tuples")
+    return list(dict.fromkeys(k for r in rows for k in r)), rows
+
+
 def _row_dict(row):
     return {k: _plain(v) for k, v in row.asDict(recursive=True).items()}
 

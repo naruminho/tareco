@@ -14,5 +14,14 @@ print("Fastest gossip route Ana -> Otto:", g.shortest_path("Ana", "Otto"))
 print("Friend groups:", g.communities())
 print("Who should meet?", g.suggest_links(top=3))
 
+# What the network shows, in plain words (lang="pt" for Portuguese).
+print(g.explain(weight="messages"))
+print(g.profile())
+
 # Color by any attribute or metric, size by another one.
 g.show(color="city", size="betweenness", edge_width="messages", title="Friends by city")
+
+# Two-sided data: link people through the things they share.
+purchases = [("Ana", "rice"), ("Bia", "rice"), ("Bia", "coffee"), ("Caio", "coffee"), ("Ana", "beans")]
+shoppers = tareco.project(purchases)
+print(shoppers.edges["Ana", "Bia"])   # {'weight': 1, 'shared': 1, 'examples': 'rice'}

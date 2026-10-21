@@ -1,9 +1,9 @@
 # tareco
 
-**Graphs made simple.** Hand it a CSV, a DataFrame or a list of pairs and get a
-beautiful interactive graph you can drag, search and click through. Then ask it
-real questions: who matters most, who bridges groups, which communities exist,
-what is the shortest route.
+**From business data to network answers.** Hand it a CSV, a DataFrame or a
+Spark table and get a beautiful interactive graph you can drag, search and click
+through, plus what it shows in plain words: which groups exist and what sets
+each one apart, who bridges them, who concentrates the flow.
 
 No dependencies. Every algorithm is written from scratch in pure Python, and
 the view is a single self-contained HTML file that works offline.
@@ -42,8 +42,68 @@ From the terminal:
 
 ```bash
 tareco friends.csv --nodes people.csv --color city
+tareco friends.csv --nodes people.csv --explain --lang pt
 tareco transfers.csv --directed --max-nodes 20000 -o transfers.html
 ```
+
+## What the network shows
+
+```python
+g = tareco.Graph("friends.csv", nodes="people.csv")
+g.explain()
+```
+
+```
+What this network shows
+- 16 nodes and 31 connections; on average each node connects to 3.9 others.
+- Everything is connected in a single network.
+- It forms 4 groups that mostly connect among themselves: 77% of the connections stay inside a group.
+- Group 1 (4 nodes, 25%): city: Recife in 75% (vs 19% overall). Key members: Duda, Ana and Caio.
+- Group 2 (4 nodes, 25%): city: São Paulo in 75% (vs 19% overall). Key members: Gabi, Heitor and Edu.
+- ...
+- The most important nodes are Iris, Mel and Lia.
+- Iris is a bridge between groups: it links Group 3, Group 2 and Group 1.
+- Mel is a bridge between groups: it links Group 4, Group 3 and Group 1.
+```
+
+`explain()` reports the facts worth acting on: separate parts and isolated
+nodes, groups and **what characterizes each one** (attributes that are much more
+common, or numbers much higher or lower, than in the whole network), the most
+important nodes, bridges between groups, hubs, nodes that only receive or only
+send (directed graphs), how concentrated the weight is. Each finding also carries
+the nodes it talks about (`for f in g.explain(): f.text, f.nodes`).
+
+In the interactive view the same findings sit behind the insights button: click
+one to light up its nodes, or to open that group. The legend shows each group's
+strongest trait.
+
+```python
+g.profile()                     # every group in detail: traits, key members, cohesion
+g.profile(groups="segment")     # or group by any attribute, dict or list of sets
+tareco.set_language("pt")       # explanations and the interface in Portuguese
+```
+
+## Two-sided data
+
+Business data often says "customer bought product" or "account used device", not
+"who is linked to whom". `project` links the things you care about through what
+they share:
+
+```python
+purchases = spark.table("sales.items")          # customer, product, amount, segment
+g = tareco.project(purchases, nodes="customer", via="product")
+g.explain()                                     # customer groups and what they buy alike
+```
+
+Edges get `weight` (shared products), `shared` and a few `examples`. Columns that
+never change for a customer (like `segment`) become customer attributes, and
+changing numbers are summed (`amount_total`), so groups can be profiled right away.
+
+- `method="jaccard"` scores pairs by overlap (0 to 1); `method="newman"` lets
+  popular products count less, so "both bought water" means little.
+- Products bought by more than `max_item_size` customers (1,000) are skipped with
+  a warning: they link everyone to everyone and cost millions of edges.
+- `g.project(nodes)` does the same for a graph that already holds both sides.
 
 ## The view
 
@@ -156,7 +216,8 @@ g.reverse(), g.to_undirected(), g.copy()
 
 | Ask | Method |
 | --- | --- |
-| Overview | `g.summary()` |
+| What it shows, in words | `g.explain()`, `g.profile()` |
+| Overview numbers | `g.summary()` |
 | Shortest route | `g.shortest_path(a, b, weight=None)`, `g.distance(a, b)`, `g.distances(a)` |
 | Who is important | `g.pagerank()`, `g.degree_centrality()` |
 | Who bridges groups | `g.betweenness(k=None)` (`k` sources estimate it fast) |
