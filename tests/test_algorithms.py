@@ -86,6 +86,29 @@ def test_betweenness():
     assert raw == {0: 0.0, 1: 1.0, 2: 0.0}
 
 
+def test_betweenness_sampling_estimates_the_exact_values():
+    g = tc.scale_free_graph(800, 2, seed=4)
+    exact = g.betweenness()
+    assert g.betweenness(k=800) == exact and g.betweenness(k=5000) == exact
+    approx = g.betweenness(k=200, seed=1)
+    assert approx == g.betweenness(k=200, seed=1)  # repeatable
+    top = lambda d: set(sorted(d, key=d.get, reverse=True)[:5])
+    assert len(top(exact) & top(approx)) >= 3
+    hub = max(exact, key=exact.get)
+    assert approx[hub] == pytest.approx(exact[hub], rel=0.25)
+    raw = g.betweenness(normalized=False, k=200, seed=1)
+    assert raw[hub] == pytest.approx(approx[hub] * 799 * 798 / 2, rel=1e-9)
+
+
+def test_communities_scale_to_large_graphs():
+    import time
+    g = tc.scale_free_graph(30000, 3, seed=2)
+    start = time.perf_counter()
+    comms = g.communities()
+    assert time.perf_counter() - start < 15
+    assert sum(map(len, comms)) == 30000 and g.modularity(comms) > 0.25
+
+
 def test_betweenness_weighted_follows_cheap_route():
     g = tc.Graph([("a", "b", 10), ("a", "c", 1), ("c", "b", 1)])
     assert g.betweenness(weight="weight")["c"] > 0

@@ -1,3 +1,4 @@
+import random
 from collections import deque
 from heapq import heappop, heappush
 from itertools import count
@@ -40,10 +41,18 @@ def pagerank(g, alpha=0.85, weight="weight", max_iter=200, tol=1.0e-8):
     return x
 
 
-def betweenness(g, normalized=True, weight=None):
-    """How often each node sits on shortest paths between other nodes (Brandes)."""
+def betweenness(g, normalized=True, weight=None, k=None, seed=0):
+    """How often each node sits on shortest paths between other nodes (Brandes).
+
+    Exact betweenness costs one search per node, which gets slow past a few
+    thousand nodes. With ``k`` only ``k`` random sources are used and the result
+    is scaled up: a good estimate in a fraction of the time.
+    """
     bc = dict.fromkeys(g, 0.0)
-    for s in g:
+    sources = list(g)
+    if k is not None and k < len(sources):
+        sources = random.Random(seed).sample(sources, k)
+    for s in sources:
         if weight is None:
             order, preds, sigma = _bfs_paths(g, s)
         else:
@@ -60,6 +69,8 @@ def betweenness(g, normalized=True, weight=None):
         scale = 1.0 / ((n - 1) * (n - 2)) if n > 2 else None
     else:
         scale = None if g.directed else 0.5
+    if len(sources) < n:
+        scale = (scale or 1.0) * n / len(sources)
     if scale is not None:
         for v in bc:
             bc[v] *= scale

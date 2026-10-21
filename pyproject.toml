@@ -9,9 +9,9 @@ description = "Graphs made simple: zero-dependency graph algorithms and beautifu
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
-license-files = ["LICENSE", "LICENSE-force-graph"]
+license-files = ["LICENSE", "LICENSE-force-graph", "LICENSE-sigma", "LICENSE-graphology"]
 authors = [{ name = "Narumi Abe", email = "mail.narumi@gmail.com" }]
-keywords = ["graph", "network", "visualization", "pagerank", "community detection", "force-directed"]
+keywords = ["graph", "network", "visualization", "pagerank", "community detection", "force-directed", "spark", "webgl"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",

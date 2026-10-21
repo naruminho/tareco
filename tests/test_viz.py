@@ -118,10 +118,10 @@ def test_labels_edges_and_curves():
 
 def test_notebook_iframe_and_repr():
     frame = notebook_html(tc.path_graph(3), height=300)
-    assert frame.startswith('<iframe srcdoc="&lt;!doctype html&gt;')
+    assert frame.startswith('<div class="tareco-graph"><iframe srcdoc="&lt;!doctype html&gt;')
     assert "height:300px" in frame
     assert tc.Graph()._repr_html_() is None
-    assert tc.path_graph(3)._repr_html_().startswith("<iframe")
+    assert "<iframe srcdoc=" in tc.path_graph(3)._repr_html_()
 
 
 def test_save_and_top_level_helpers(tmp_path):

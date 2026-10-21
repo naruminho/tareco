@@ -11,6 +11,7 @@
   --edge: rgba(148, 163, 184, 0.24);
   --edge-faint: rgba(148, 163, 184, 0.05);
   --ring: #f8fafc;
+  --fade: #222a3b;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 :root[data-theme="light"] {
@@ -26,6 +27,7 @@
   --edge: rgba(71, 85, 105, 0.26);
   --edge-faint: rgba(71, 85, 105, 0.06);
   --ring: #0f172a;
+  --fade: #e3e7ee;
   --shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
 }
 
@@ -299,7 +301,16 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .tip .edge { display: inline-flex; align-items: center; gap: 4px; }
 .tip .icon { width: 12px; height: 12px; }
 
-.is-3d #btn-labels, .is-3d #btn-png { display: none; }
+.is-3d #btn-labels, .is-3d #btn-png, .is-webgl #btn-png { display: none; }
+button[hidden] { display: none; }
+button:disabled { opacity: 0.35; cursor: default; background: transparent; }
+
+#crumb { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); min-width: 0; }
+#crumb[hidden] { display: none; }
+#crumb button { width: 28px; height: 28px; flex: none; }
+#crumb-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#crumb-count { white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
+#graph.webgl { background: var(--bg); }
 
 @media (max-width: 720px) {
   .header { left: 12px; right: 12px; top: 12px; width: auto; }

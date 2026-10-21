@@ -13,9 +13,9 @@ from .generators import (community_graph, complete_graph, cycle_graph, grid_grap
 from .graph import Graph
 from .io import read_csv, read_json
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
-_LOAD_OPTIONS = ("directed", "nodes", "source", "target", "node_id")
+_LOAD_OPTIONS = ("directed", "nodes", "source", "target", "node_id", "max_rows")
 
 
 def _split(options):

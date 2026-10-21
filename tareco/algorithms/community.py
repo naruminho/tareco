@@ -1,5 +1,5 @@
 import random
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from ..errors import TarecoError
 from ..graph import _weight_fn
@@ -65,32 +65,41 @@ def louvain(g, weight="weight", resolution=1.0, seed=0):
 
 
 def _local_moves(adj, k, two_m, resolution, rng):
+    # Fast local moving: after a node moves, only its neighbors outside the new
+    # community can gain from moving, so only they go back in the queue.
     n = len(adj)
     comm = list(range(n))
     total = list(k)
     order = list(range(n))
     rng.shuffle(order)
+    queue = deque(order)
+    queued = [True] * n
     moved_any = False
-    moved = True
-    while moved:
-        moved = False
-        for i in order:
-            ci = comm[i]
-            links = defaultdict(float)
-            for j, w in adj[i].items():
-                if j != i:
-                    links[comm[j]] += w
-            total[ci] -= k[i]
-            factor = resolution * k[i] / two_m
-            best, best_gain = ci, links.get(ci, 0.0) - factor * total[ci]
-            for c, w in links.items():
-                gain = w - factor * total[c]
-                if gain > best_gain + 1e-12:
-                    best, best_gain = c, gain
-            total[best] += k[i]
-            if best != ci:
-                comm[i] = best
-                moved = moved_any = True
+    while queue:
+        i = queue.popleft()
+        queued[i] = False
+        ci = comm[i]
+        links = {}
+        for j, w in adj[i].items():
+            if j != i:
+                c = comm[j]
+                links[c] = links.get(c, 0.0) + w
+        ki = k[i]
+        total[ci] -= ki
+        factor = resolution * ki / two_m
+        best, best_gain = ci, links.get(ci, 0.0) - factor * total[ci]
+        for c, w in links.items():
+            gain = w - factor * total[c]
+            if gain > best_gain + 1e-12:
+                best, best_gain = c, gain
+        total[best] += ki
+        if best != ci:
+            comm[i] = best
+            moved_any = True
+            for j in adj[i]:
+                if not queued[j] and j != i and comm[j] != best:
+                    queued[j] = True
+                    queue.append(j)
     return comm, moved_any
 
 

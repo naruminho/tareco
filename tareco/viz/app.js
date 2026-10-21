@@ -62,7 +62,7 @@
     return [a, b];
   }
   function norm(s) {
-    return String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    return String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
   function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -450,7 +450,10 @@
   // ----------------------------------------------------------------- header
 
   $("title").textContent = cfg.title || "";
-  $("counts").textContent = `${fmt(cfg.counts.nodes)} nodes · ${fmt(cfg.counts.edges)} edges`;
+  const counted = (shown, total, word) =>
+    shown < total ? `${fmt(shown)} of ${fmt(total)} ${word}` : `${fmt(total)} ${word}`;
+  const total = cfg.total || cfg.counts;
+  $("counts").textContent = `${counted(cfg.counts.nodes, total.nodes, "nodes")} \u00b7 ${counted(cfg.counts.edges, total.edges, "edges")}`;
 
   // ----------------------------------------------------------------- search
 

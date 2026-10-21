@@ -1,12 +1,22 @@
-"""Interactive HTML view: a force-directed graph you can drag, search and explore."""
+"""Interactive HTML views: a force-directed graph you can drag, search and explore.
 
+Small graphs are drawn with force-graph on a canvas. Big ones switch to a WebGL
+renderer (sigma.js) whose layout runs in a Web Worker, so the page never
+freezes, and very big ones are trimmed to their most important part, with an
+overview where each group of nodes is one bubble you can open.
+"""
+
+import colorsys
 import html
 import json
+import math
 import os
+import random
 import re
 import sys
 import tempfile
 import webbrowser
+from decimal import Decimal
 from importlib import resources
 
 from ..errors import TarecoError
@@ -21,9 +31,23 @@ METRICS = ("pagerank", "degree", "betweenness", "closeness", "clustering", "core
 GROUP_METRICS = ("community", "component")
 LIB_3D = "https://cdn.jsdelivr.net/npm/3d-force-graph@1.80.1/dist/3d-force-graph.min.js"
 
+CANVAS_LIMIT = (2_000, 8_000)        # "auto" switches to WebGL above this many nodes/edges
+CANVAS_MAX = (3_000, 12_000)         # what the canvas and 3D views embed by default
+WEBGL_MAX = (50_000, 200_000)        # what the WebGL view embeds by default
+OVERVIEW_START = (30_000, 120_000)   # the WebGL view opens on the group overview above this
+MAX_GROUPS = 250                     # bubbles in the overview; smaller groups are merged
+MAX_ATTR_COLUMNS = 40
+SAMPLED_BETWEENNESS = (2_000, 500)   # above 2,000 nodes, estimate betweenness from 500 sources
+CLOSENESS_LIMIT = 20_000
+DATABRICKS_BUDGET_MB = 9             # cell output is cut at 10 MB by default on DBR 17+
+NOTEBOOK_BUDGET_MB = 25
+
+
+# ---------------------------------------------------------------------- public
 
 def to_html(g, color=None, size=None, label=None, edge_width=None, title=None, dim=2,
-            particles=False, theme="auto"):
+            particles=False, theme="auto", renderer="auto", max_nodes=None, max_edges=None,
+            budget_mb=None):
     """The interactive view as a standalone HTML document (string).
 
     color       attribute name, a metric ("community", "pagerank", "degree",
@@ -34,28 +58,18 @@ def to_html(g, color=None, size=None, label=None, edge_width=None, title=None, d
     label       attribute holding the text shown for each node (default: the id).
     edge_width  edge attribute for line width (default: "weight" when present).
     dim         2 or 3. The 3D view loads its library from a CDN.
-    particles   animated dots flowing along the edges.
+    particles   animated dots flowing along the edges (canvas and 3D views).
     theme       "auto", "dark" or "light".
+    renderer    "auto" (canvas for small graphs, WebGL above 2,000 nodes or
+                8,000 edges), "canvas" or "webgl".
+    max_nodes   most nodes to embed; bigger graphs keep their highest-PageRank
+    max_edges   nodes (and heaviest edges). Defaults: 50,000/200,000 for WebGL,
+                3,000/12,000 for canvas and 3D.
+    budget_mb   shrink the graph until the page fits in this many megabytes.
     """
-    if dim not in (2, 3):
-        raise TarecoError("dim must be 2 or 3")
-    payload = build_payload(g, color=color, size=size, label=label, edge_width=edge_width,
-                            title=title, dim=dim, particles=particles, theme=theme)
-    data = json.dumps(payload, default=json_default, ensure_ascii=False).replace("<", "\\u003c")
-    if dim == 3:
-        lib = f'<script src="{LIB_3D}"></script>'
-    else:
-        lib = "<script>" + _asset("force-graph.min.js") + "</script>"
-    parts = {
-        "__TITLE__": html.escape(payload["config"]["title"] or "tareco"),
-        "<!--LIB-->": lib,
-        "/*DATA*/": "window.__TARECO__ = " + data + ";",
-        "/*STYLE*/": _asset("style.css"),
-        "/*APP*/": _asset("app.js"),
-    }
-    # one pass, so inserted text is never scanned for markers again
-    return re.sub("|".join(re.escape(k) for k in parts), lambda m: parts[m.group(0)],
-                  _asset("template.html"))
+    return _build(g, dict(color=color, size=size, label=label, edge_width=edge_width,
+                          title=title, dim=dim, particles=particles, theme=theme),
+                  renderer, max_nodes, max_edges, budget_mb, wrap=None)
 
 
 def save(g, path, **options):
@@ -65,46 +79,156 @@ def save(g, path, **options):
     return os.path.abspath(path)
 
 
-def notebook_html(g, height=560, **options):
-    doc = html.escape(to_html(g, **options), quote=True)
-    return (f'<iframe srcdoc="{doc}" style="width:100%;height:{int(height)}px;border:0;'
-            f'border-radius:12px" sandbox="allow-scripts allow-downloads"></iframe>')
+def notebook_html(g, height=560, budget_mb=None, renderer="auto", max_nodes=None,
+                  max_edges=None, **options):
+    """The view wrapped in an iframe for notebook output, kept under ``budget_mb``."""
+    if budget_mb is None:
+        budget_mb = default_budget_mb()
+
+    def wrap(doc):
+        # a bare <iframe> makes IPython warn; the div keeps the output quiet
+        return (f'<div class="tareco-graph"><iframe srcdoc="{html.escape(doc, quote=True)}" '
+                f'style="width:100%;height:{int(height)}px;border:0;border-radius:12px" '
+                f'sandbox="allow-scripts allow-downloads"></iframe></div>')
+
+    return _build(g, options, renderer, max_nodes, max_edges, budget_mb, wrap)
 
 
 def show(g, height=560, **options):
-    """Inline in Jupyter/VS Code/Colab; otherwise opens the default browser."""
-    if _in_notebook():
-        from IPython.display import HTML, display
-        display(HTML(notebook_html(g, height=height, **options)))
-        return
+    """Inline in Jupyter, VS Code, Colab and Databricks; otherwise opens the browser.
+
+    Where there is neither a notebook nor a browser (a cluster job, a server),
+    the page is saved to a temporary file and its path is printed.
+    """
+    if _in_notebook() or _on_databricks():
+        if _display_html(notebook_html(g, height=height, **options)):
+            return
     folder = os.path.join(tempfile.gettempdir(), "tareco")
     os.makedirs(folder, exist_ok=True)
     fd, path = tempfile.mkstemp(suffix=".html", prefix="graph-", dir=folder)
     os.close(fd)
     save(g, path, **options)
-    webbrowser.open("file://" + os.path.abspath(path).replace(os.sep, "/"))
+    opened = False
+    if not _on_databricks():
+        try:
+            opened = webbrowser.open("file://" + os.path.abspath(path).replace(os.sep, "/"))
+        except Exception:
+            opened = False
+    if not opened:
+        print(f"tareco: no browser here, the graph was saved to {path}")
 
+
+def default_budget_mb():
+    return DATABRICKS_BUDGET_MB if _on_databricks() else NOTEBOOK_BUDGET_MB
+
+
+# ------------------------------------------------------------------ environment
 
 def _in_notebook():
+    shell = _ipython()
+    return shell is not None and getattr(shell, "kernel", None) is not None
+
+
+def _on_databricks():
+    return "DATABRICKS_RUNTIME_VERSION" in os.environ
+
+
+def _ipython():
     ipython = sys.modules.get("IPython")
     if ipython is None:
-        return False
+        return None
     try:
-        shell = ipython.get_ipython()
+        return ipython.get_ipython()
     except Exception:
-        return False
-    return shell is not None and getattr(shell, "kernel", None) is not None
+        return None
+
+
+def _display_html(markup):
+    """Render HTML in the current notebook. False when there is no way to."""
+    shell = _ipython()
+    namespace = getattr(shell, "user_ns", None) or {}
+    display_html = namespace.get("displayHTML") or getattr(sys.modules.get("__main__"), "displayHTML", None)
+    if display_html is not None:  # Databricks
+        display_html(markup)
+        return True
+    if shell is not None:
+        from IPython.display import HTML, display
+        display(HTML(markup))
+        return True
+    return False
 
 
 def _asset(name):
     return resources.files(__name__).joinpath(name).read_text(encoding="utf-8")
 
 
-# --------------------------------------------------------------------- payload
+# ---------------------------------------------------------------------- build
 
-def build_payload(g, color=None, size=None, label=None, edge_width=None, title=None, dim=2,
-                  particles=False, theme="auto"):
-    nodes = list(g)
+def _choose_renderer(g, renderer, dim):
+    if renderer not in ("auto", "canvas", "webgl"):
+        raise TarecoError('renderer must be "auto", "canvas" or "webgl"')
+    if dim not in (2, 3):
+        raise TarecoError("dim must be 2 or 3")
+    if dim == 3:
+        if renderer == "webgl":
+            raise TarecoError("the WebGL renderer is 2D; use dim=2 or renderer='auto'")
+        return "3d"
+    if renderer == "auto":
+        big = len(g) > CANVAS_LIMIT[0] or g.edge_count > CANVAS_LIMIT[1]
+        return "webgl" if big else "canvas"
+    return renderer
+
+
+def _build(g, options, renderer, max_nodes, max_edges, budget_mb, wrap):
+    kind = _choose_renderer(g, renderer, options.get("dim", 2))
+    limits = WEBGL_MAX if kind == "webgl" else CANVAS_MAX
+    max_nodes = limits[0] if max_nodes is None else max_nodes
+    max_edges = limits[1] if max_edges is None else max_edges
+    metric = _metric_cache(g)
+    for _ in range(6):
+        doc, shown = _document(g, kind, options, max_nodes, max_edges, metric)
+        out = wrap(doc) if wrap else doc
+        size = len(out.encode("utf-8"))
+        if not budget_mb or size <= budget_mb * 1e6 or shown == (0, 0):
+            return out
+        ratio = budget_mb * 1e6 / size * 0.85
+        max_nodes = max(10, int(shown[0] * ratio))
+        max_edges = max(10, int(shown[1] * ratio))
+    return out
+
+
+def _document(g, kind, options, max_nodes, max_edges, metric):
+    nodes, triples = _reduce(g, max_nodes, max_edges, metric)
+    if kind == "webgl":
+        payload = build_webgl_payload(g, nodes, triples, metric, **options)
+        lib = "".join(f"<script>{_asset(name)}</script>"
+                      for name in ("graphology.umd.min.js", "sigma.min.js"))
+        app = _asset("layout.js") + "\n" + _asset("webgl.js")
+    else:
+        payload = build_payload(g, nodes, triples, metric, **options)
+        if kind == "3d":
+            lib = f'<script src="{LIB_3D}"></script>'
+        else:
+            lib = "<script>" + _asset("force-graph.min.js") + "</script>"
+        app = _asset("app.js")
+    # ASCII only: the page may be embedded in a notebook that decodes it with any charset
+    data = json.dumps(payload, default=json_default, ensure_ascii=True,
+                      separators=(",", ":")).replace("<", "\\u003c")
+    title = html.escape(payload["config"]["title"] or "tareco")
+    parts = {
+        "__TITLE__": title.encode("ascii", "xmlcharrefreplace").decode("ascii"),
+        "<!--LIB-->": lib,
+        "/*DATA*/": "window.__TARECO__ = " + data + ";",
+        "/*STYLE*/": _asset("style.css"),
+        "/*APP*/": app,
+    }
+    # one pass, so inserted text is never scanned for markers again
+    page = re.sub("|".join(re.escape(k) for k in parts), lambda m: parts[m.group(0)],
+                  _asset("template.html"))
+    return page, (len(nodes), len(triples))
+
+
+def _metric_cache(g):
     cache = {}
 
     def metric(name):
@@ -112,81 +236,307 @@ def build_payload(g, color=None, size=None, label=None, edge_width=None, title=N
             cache[name] = _compute_metric(g, name)
         return cache[name]
 
-    if color is None:
-        color = "community" if g.edge_count else None
-    if size is None:
-        size = "pagerank" if g.edge_count else None
-
-    shown_metrics = {"degree": g.degree()}
-    if g.directed:
-        shown_metrics = {"in": g.in_degree(), "out": g.out_degree()}
-
-    colors, groups, legend = _colors(g, nodes, color, metric)
-    sizes = _sizes(g, nodes, size, metric)
-    for name in (color, size):
-        if isinstance(name, str) and name in METRICS:
-            shown_metrics[name] = metric(name)
-
-    if edge_width is None and any(isinstance(d.get("weight"), (int, float)) for _, _, d in g._edge_triples()):
-        edge_width = "weight"
-    triples = list(g._edge_triples())
-    widths = _scale([_number(d.get(edge_width)) if edge_width else None for _, _, d in triples], 0.6, 5.0, 1.0)
-
-    index = {n: i for i, n in enumerate(nodes)}
-    out_nodes = []
-    for i, n in enumerate(nodes):
-        attrs = g.nodes[n]
-        text = attrs.get(label) if label is not None else None
-        out_nodes.append({
-            "id": i,
-            "label": str(n if text is None else text),
-            "color": colors[i],
-            "val": sizes[i],
-            "group": groups[i],
-            "attrs": attrs,
-            "metrics": {k: v[n] for k, v in shown_metrics.items()},
-        })
-    out_links = []
-    for (u, v, d), w in zip(triples, widths):
-        curve = 0.0
-        if u == v:
-            curve = 0.6
-        elif g.directed and g.has_edge(v, u):
-            curve = 0.18
-        out_links.append({"source": index[u], "target": index[v], "w": w, "curve": curve, "attrs": d})
-
-    return {
-        "config": {
-            "title": title if title is not None else g.attrs.get("title", ""),
-            "directed": g.directed,
-            "dim": dim,
-            "particles": bool(particles),
-            "theme": theme,
-            "legend": legend,
-            "size": size if isinstance(size, str) else None,
-            "counts": {"nodes": len(nodes), "edges": g.edge_count},
-        },
-        "nodes": out_nodes,
-        "links": out_links,
-    }
+    return metric
 
 
 def _compute_metric(g, name):
+    n = len(g)
     if name == "pagerank":
         return g.pagerank()
     if name == "degree":
         return g.degree()
     if name == "betweenness":
-        return g.betweenness()
+        above, k = SAMPLED_BETWEENNESS
+        return g.betweenness(k=k if n > above else None)
     if name == "closeness":
+        if n > CLOSENESS_LIMIT:
+            raise TarecoError(f"closeness needs a search from every node, too slow for {n:,} "
+                              f"nodes; try 'pagerank' or 'betweenness'")
         return g.closeness()
     if name == "clustering":
         return g.clustering()
     if name == "core":
         return g.core_number()
     groups = g.communities() if name == "community" else g.components()
-    return {n: i + 1 for i, members in enumerate(groups) for n in members}
+    return {node: i + 1 for i, members in enumerate(groups) for node in members}
 
+
+def _reduce(g, max_nodes, max_edges, metric):
+    """Nodes and edges to embed: everything, or the most important part."""
+    nodes = list(g)
+    if len(nodes) <= max_nodes and g.edge_count <= max_edges:
+        return nodes, list(g._edge_triples())
+    rank = metric("pagerank")
+    if len(nodes) > max_nodes:
+        keep = set(sorted(nodes, key=rank.get, reverse=True)[:max_nodes])
+        nodes = [n for n in nodes if n in keep]
+        triples = [t for t in g._edge_triples() if t[0] in keep and t[1] in keep]
+    else:
+        triples = list(g._edge_triples())
+    if len(triples) > max_edges:
+        def importance(t):
+            w = _number(t[2].get("weight"))
+            return (w if w is not None else 1.0, rank[t[0]] + rank[t[1]])
+        triples = sorted(triples, key=importance, reverse=True)[:max_edges]
+    return nodes, triples
+
+
+def _defaults(g, color, size):
+    if color is None:
+        color = "community" if g.edge_count else None
+    if size is None:
+        size = "pagerank" if g.edge_count else None
+    return color, size
+
+
+def _edge_width_attr(edge_width, triples):
+    if edge_width is None and any(_number(d.get("weight")) is not None for _, _, d in triples):
+        return "weight"
+    return edge_width
+
+
+def _config(g, nodes, triples, title, theme, legend, size, **extra):
+    config = {
+        "title": title if title is not None else g.attrs.get("title", ""),
+        "directed": g.directed,
+        "theme": theme,
+        "legend": legend,
+        "size": size if isinstance(size, str) else None,
+        "counts": {"nodes": len(nodes), "edges": len(triples)},
+        "total": {"nodes": len(g), "edges": g.edge_count},
+    }
+    config.update(extra)
+    return config
+
+
+# ------------------------------------------------------------- canvas payload
+
+def build_payload(g, nodes=None, triples=None, metric=None, color=None, size=None, label=None,
+                  edge_width=None, title=None, dim=2, particles=False, theme="auto"):
+    """Data for the canvas/3D view: one object per node and per link."""
+    if nodes is None:
+        nodes = list(g)
+    if triples is None:
+        triples = list(g._edge_triples())
+    metric = metric or _metric_cache(g)
+    color, size = _defaults(g, color, size)
+    colors, groups, legend = _colors(g, nodes, color, metric)
+    sizes = _sizes(g, nodes, size, metric)
+    shown = _shown_metrics(g, color, size, metric)
+    edge_width = _edge_width_attr(edge_width, triples)
+    widths = _scale([_number(d.get(edge_width)) if edge_width else None for _, _, d in triples],
+                    0.6, 5.0, 1.0)
+
+    index = {n: i for i, n in enumerate(nodes)}
+    pairs = {(u, v) for u, v, _ in triples} if g.directed else set()
+    out_nodes = []
+    for i, n in enumerate(nodes):
+        attrs = g.nodes[n]
+        out_nodes.append({
+            "id": i,
+            "label": _label(n, attrs, label),
+            "color": colors[i],
+            "val": sizes[i],
+            "group": groups[i],
+            "attrs": attrs,
+            "metrics": {k: v[n] for k, v in shown.items()},
+        })
+    out_links = []
+    for (u, v, d), w in zip(triples, widths):
+        curve = 0.6 if u == v else 0.18 if (v, u) in pairs else 0.0
+        out_links.append({"source": index[u], "target": index[v], "w": w, "curve": curve, "attrs": d})
+
+    return {
+        "config": _config(g, nodes, triples, title, theme, legend, size, renderer="canvas",
+                          dim=dim, particles=bool(particles)),
+        "nodes": out_nodes,
+        "links": out_links,
+    }
+
+
+def _shown_metrics(g, color, size, metric):
+    shown = {"in": g.in_degree(), "out": g.out_degree()} if g.directed else {"degree": g.degree()}
+    for name in (color, size):
+        if isinstance(name, str) and name in METRICS:
+            shown[name] = metric(name)
+    return shown
+
+
+def _label(node, attrs, label):
+    text = attrs.get(label) if label is not None else None
+    return str(node if text is None else text)
+
+
+# -------------------------------------------------------------- WebGL payload
+
+def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, size=None,
+                        label=None, edge_width=None, title=None, dim=2, particles=False,
+                        theme="auto"):
+    """Data for the WebGL view, column by column to keep big pages small."""
+    if nodes is None:
+        nodes = list(g)
+    if triples is None:
+        triples = list(g._edge_triples())
+    metric = metric or _metric_cache(g)
+    color, size = _defaults(g, color, size)
+    colors, cats, legend = _colors(g, nodes, color, metric)
+    sizes = _sizes(g, nodes, size, metric)
+    shown = _shown_metrics(g, color, size, metric)
+    group_of, groups, group_title = _overview_groups(g, color, legend, metric)
+    index = {n: i for i, n in enumerate(nodes)}
+    grp = [group_of[n] for n in nodes]
+    xs, ys, gx, gy = _seed_positions(grp, len(groups))
+
+    palette = list(dict.fromkeys(colors))
+    color_index = {c: i for i, c in enumerate(palette)}
+    cat_index = {}
+    if legend and legend["kind"] == "category":
+        cat_index = {("" if it.get("missing") else it["label"]): i for i, it in enumerate(legend["items"])}
+
+    columns = list(dict.fromkeys(k for n in nodes for k in g.nodes[n]))[:MAX_ATTR_COLUMNS]
+    edge_width = _edge_width_attr(edge_width, triples)
+    plain = [(u, v, d) for u, v, d in triples if u != v]  # sigma draws no self-loops
+    widths = _scale([_number(d.get(edge_width)) if edge_width else None for _, _, d in plain],
+                    0.5, 4.0, None) if edge_width else None
+    flat = []
+    for u, v, _ in plain:
+        flat.append(index[u])
+        flat.append(index[v])
+
+    shown_counts = [0] * len(groups)
+    for gi in grp:
+        shown_counts[gi] += 1
+    sizes_g = [grp_["size"] for grp_ in groups]
+    gedges, gweights = _group_edges(g, group_of)
+
+    return {
+        "config": _config(g, nodes, triples, title, theme, legend, size, renderer="webgl",
+                          groupTitle=group_title,
+                          start="overview" if (len(nodes) > OVERVIEW_START[0]
+                                               or len(plain) > OVERVIEW_START[1]) else "nodes"),
+        "nodes": {
+            "label": [_label(n, g.nodes[n], label) for n in nodes],
+            "colors": palette,
+            "c": [color_index[c] for c in colors],
+            "size": sizes,
+            "x": xs,
+            "y": ys,
+            "cat": [cat_index.get(k, -1) if k is not None else -1 for k in cats],
+            "grp": grp,
+            "metrics": {k: [_compact(v[n]) for n in nodes] for k, v in shown.items()},
+            "attrs": {c: [g.nodes[n].get(c) for n in nodes] for c in columns},
+        },
+        "edges": {"e": flat, "w": widths},
+        "groups": {
+            "label": [grp_["label"] for grp_ in groups],
+            "color": [grp_["color"] for grp_ in groups],
+            "size": sizes_g,
+            "shown": shown_counts,
+            "x": gx,
+            "y": gy,
+            "e": gedges,
+            "w": gweights,
+        },
+    }
+
+
+def _compact(value):
+    if isinstance(value, float):
+        return float(f"{value:.5g}")
+    return value
+
+
+def _overview_groups(g, color, legend, metric):
+    """One group per category (or community) over the whole graph, biggest first."""
+    every = list(g)
+    if legend and legend["kind"] == "category":
+        values, _ = _values(g, every, color, metric)
+        keys = ["" if v is None else _category_key(v) for v in values]
+        palette = {("" if it.get("missing") else it["label"]): it["color"] for it in legend["items"]}
+        title = legend.get("title") or "group"
+    else:
+        values = metric("community")
+        keys = [str(values[n]) for n in every]
+        palette = {}
+        title = "community"
+    counts = {}
+    for k in keys:
+        counts[k] = counts.get(k, 0) + 1
+    if title in GROUP_METRICS:
+        order = sorted(counts, key=lambda k: (-counts[k], int(k)))
+    else:
+        order = sorted(counts, key=lambda k: -counts[k])
+    top = order[:MAX_GROUPS]
+    groups = []
+    slot = {}
+    for i, k in enumerate(top):
+        slot[k] = i
+        if title in GROUP_METRICS:
+            name = f"{title.capitalize()} {k}"
+        else:
+            name = k if k else "none"
+        groups.append({"label": name, "color": palette.get(k) or _category_color(i), "size": counts[k]})
+    if len(order) > len(top):
+        rest = len(groups)
+        groups.append({"label": f"{len(order) - len(top):,} smaller groups", "color": MISSING_COLOR,
+                       "size": sum(counts[k] for k in order[len(top):])})
+        for k in order[len(top):]:
+            slot[k] = rest
+    return {n: slot[k] for n, k in zip(every, keys)}, groups, title
+
+
+def _group_edges(g, group_of):
+    weights = {}
+    for u, v, d in g._edge_triples():
+        a, b = group_of[u], group_of[v]
+        if a == b:
+            continue
+        key = (a, b) if a < b else (b, a)
+        w = _number(d.get("weight"))
+        weights[key] = weights.get(key, 0.0) + (w if w is not None and w > 0 else 1.0)
+    flat, ws = [], []
+    for (a, b), w in weights.items():
+        flat.append(a)
+        flat.append(b)
+        ws.append(round(w, 3))
+    return flat, ws
+
+
+def _seed_positions(grp, group_count, spacing=14.0, seed=7):
+    """Start each group as a disc of its own, discs laid on a spiral, biggest in the middle.
+
+    The layout engine refines this in the browser; starting from groups makes
+    it settle much faster than starting from noise.
+    """
+    rng = random.Random(seed)
+    members = [[] for _ in range(group_count)]
+    for i, gi in enumerate(grp):
+        members[gi].append(i)
+    xs = [0.0] * len(grp)
+    ys = [0.0] * len(grp)
+    gx = [0.0] * group_count
+    gy = [0.0] * group_count
+    placed = 0
+    for rank, gi in enumerate(sorted(range(group_count), key=lambda j: -len(members[j]))):
+        k = max(1, len(members[gi]))
+        radius = spacing * math.sqrt(k)
+        if rank:
+            dist = spacing * math.sqrt(placed) + radius
+            angle = rank * 2.399963
+            cx, cy = dist * math.cos(angle), dist * math.sin(angle)
+        else:
+            cx = cy = 0.0
+        placed += k
+        gx[gi], gy[gi] = round(cx, 1), round(cy, 1)
+        for i in members[gi]:
+            r = radius * math.sqrt(rng.random())
+            a = 2 * math.pi * rng.random()
+            xs[i] = round(cx + r * math.cos(a), 1)
+            ys[i] = round(cy + r * math.sin(a), 1)
+    return xs, ys, gx, gy
+
+
+# --------------------------------------------------------------------- styling
 
 def _values(g, nodes, spec, metric):
     """``(values, title)`` for a color/size spec, or ``(None, None)``."""
@@ -219,9 +569,10 @@ def _colors(g, nodes, spec, metric):
                    or (all(isinstance(v, int) for v in present) and len(set(present)) <= len(PALETTE)
                        and spec not in METRICS))
     if not categorical:
-        lo, hi = min(present), max(present)
-        colors = [MISSING_COLOR if v is None else _gradient((v - lo) / (hi - lo) if hi > lo else 0.5)
-                  for v in values]
+        nums = [_number(v) for v in values]
+        lo, hi = min(x for x in nums if x is not None), max(x for x in nums if x is not None)
+        colors = [MISSING_COLOR if x is None else _gradient((x - lo) / (hi - lo) if hi > lo else 0.5)
+                  for x in nums]
         legend = {"kind": "scale", "title": title, "min": lo, "max": hi, "colors": GRADIENT}
         return colors, [None] * n, legend
 
@@ -253,8 +604,9 @@ def _category_key(value):
 def _category_color(i):
     if i < len(PALETTE):
         return PALETTE[i]
-    hue = (i * 137.508) % 360
-    return f"hsl({hue:.0f}, 62%, 58%)"
+    # golden-angle hues; hex because the WebGL renderer only reads hex/rgb colors
+    r, g, b = colorsys.hls_to_rgb((i * 137.508) % 360 / 360, 0.58, 0.62)
+    return f"#{round(r * 255):02x}{round(g * 255):02x}{round(b * 255):02x}"
 
 
 def _gradient(t):
@@ -286,6 +638,8 @@ def _number(value):
         return None
     if isinstance(value, (int, float)):
         return float(value) if value == value else None
+    if isinstance(value, Decimal):
+        return float(value)
     if hasattr(value, "item"):
         return _number(value.item())
     return None

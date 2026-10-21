@@ -4,6 +4,7 @@ import csv
 import json
 import os
 import re
+from decimal import Decimal
 
 from .errors import TarecoError
 
@@ -13,17 +14,19 @@ TARGET_COLUMNS = ("target", "to", "dst", "destination", "dest", "destino", "para
                   "receiver", "end", "child", "v", "node2")
 ID_COLUMNS = ("id", "node", "name", "key", "label", "nome")
 DECIMAL_COMMA = re.compile(r"^-?\d+,\d+$")
+MAX_ROWS = 1_000_000
 
 
-def load_into(g, data, *, directed=None, nodes=None, source=None, target=None, node_id=None):
+def load_into(g, data, *, directed=None, nodes=None, source=None, target=None, node_id=None,
+              max_rows=MAX_ROWS):
     data = _resolve(data)
     if directed is None:
         directed = _infer_directed(data)
     g._reset(bool(directed))
     if nodes is not None:
-        _add_nodes_from(g, _resolve(nodes), node_id)
+        _add_nodes_from(g, _resolve(nodes), node_id, max_rows)
     if data is not None:
-        _add_data(g, data, source, target, node_id)
+        _add_data(g, data, source, target, node_id, max_rows)
 
 
 def read_csv(path, nodes=None, *, directed=False, source=None, target=None, node_id=None):
@@ -126,6 +129,46 @@ def _is_dataframe(obj):
     return hasattr(obj, "columns") and hasattr(obj, "to_dict") and hasattr(obj, "iloc")
 
 
+def _is_spark(obj):
+    return hasattr(obj, "toLocalIterator") and hasattr(obj, "schema") and hasattr(obj, "columns")
+
+
+def _is_polars(obj):
+    return hasattr(obj, "iter_rows") and hasattr(obj, "columns") and hasattr(obj, "schema")
+
+
+def _tabular(obj, max_rows):
+    """``(columns, rows)`` for Spark, polars and pandas DataFrames; ``None`` otherwise."""
+    if _is_spark(obj):
+        return list(obj.columns), _spark_rows(obj, max_rows)
+    if _is_polars(obj):
+        return list(obj.columns), obj.iter_rows(named=True)
+    if _is_dataframe(obj):
+        return list(obj.columns), obj.to_dict("records")
+    return None
+
+
+def _spark_rows(df, max_rows):
+    # toLocalIterator brings one partition at a time to the driver, not the whole table
+    rows = df.limit(max_rows + 1) if max_rows is not None else df
+    for i, row in enumerate(rows.toLocalIterator()):
+        if max_rows is not None and i == max_rows:
+            raise TarecoError(
+                f"the Spark DataFrame has more than {max_rows:,} rows. Aggregate or filter it in "
+                f"Spark first (groupBy source/target, a date range, a minimum weight...), or pass "
+                f"max_rows=None to load everything into the driver")
+        yield _row_dict(row)
+
+
+def _row_dict(row):
+    return {k: _plain(v) for k, v in row.asDict(recursive=True).items()}
+
+
+def _plain(value):
+    # Spark returns DECIMAL columns as Decimal, which would not count as a number elsewhere
+    return float(value) if isinstance(value, Decimal) else value
+
+
 def _is_node_link(d):
     return any(isinstance(d.get(k), list) for k in ("nodes", "edges", "links"))
 
@@ -143,9 +186,12 @@ def _clean(record, skip=()):
     return {k: v for k, v in record.items() if k not in skip and not _missing(v)}
 
 
-def _add_data(g, data, source, target, node_id):
+def _add_data(g, data, source, target, node_id, max_rows):
     from .graph import Graph
-    if isinstance(data, Graph):
+    table = _tabular(data, max_rows)
+    if table is not None:
+        _add_edge_records(g, table[1], source, target, table[0])
+    elif isinstance(data, Graph):
         for n, d in data.nodes.items():
             g._add_node(n, dict(d))
         for u, v, d in data._edge_triples():
@@ -158,8 +204,6 @@ def _add_data(g, data, source, target, node_id):
             g._add_node(n, dict(d))
         for u, v, d in data.edges(data=True):
             g._add_edge(u, v, dict(d))
-    elif _is_dataframe(data):
-        _add_edge_records(g, data.to_dict("records"), source, target)
     elif isinstance(data, dict):
         if _is_node_link(data):
             if isinstance(data.get("attrs"), dict):
@@ -179,7 +223,9 @@ def _add_data(g, data, source, target, node_id):
         first = next((x for x in items if x is not None), None)
         if first is None:
             return
-        if isinstance(first, dict):
+        if hasattr(first, "asDict"):  # Spark Rows from df.collect()
+            _add_edge_records(g, [_row_dict(r) for r in items if r is not None], source, target)
+        elif isinstance(first, dict):
             _add_edge_records(g, items, source, target)
         elif isinstance(first, (tuple, list)) and not _looks_like_node_pair(first):
             g.add_edges(items)
@@ -212,11 +258,12 @@ def _add_adjacency(g, adj):
             g._add_edge(u, nbrs, {})
 
 
-def _add_edge_records(g, records, source, target):
-    records = [r for r in records if r]
-    if not records:
-        return
-    columns = list(dict.fromkeys(k for r in records for k in r))
+def _add_edge_records(g, records, source, target, columns=None):
+    if columns is None:
+        records = [r for r in records if r]
+        if not records:
+            return
+        columns = list(dict.fromkeys(k for r in records for k in r))
     s = _pick_column(columns, source, SOURCE_COLUMNS, "source")
     t = _pick_column(columns, target, TARGET_COLUMNS, "target", exclude=s)
     for r in records:
@@ -229,14 +276,17 @@ def _add_edge_records(g, records, source, target):
             g._add_edge(u, v, _clean(r, (s, t)))
 
 
-def _add_nodes_from(g, nodes, node_id):
-    if _is_dataframe(nodes):
-        nodes = nodes.to_dict("records")
+def _add_nodes_from(g, nodes, node_id, max_rows=MAX_ROWS):
+    table = _tabular(nodes, max_rows)
+    if table is not None:
+        nodes = list(table[1])
     if isinstance(nodes, dict):
         for n, d in nodes.items():
             g._add_node(n, _clean(d) if isinstance(d, dict) else {"value": d})
         return
     items = [x for x in nodes if x is not None]
+    if items and hasattr(items[0], "asDict"):
+        items = [_row_dict(r) for r in items]
     if items and isinstance(items[0], dict):
         columns = list(dict.fromkeys(k for r in items for k in r))
         key = _pick_column(columns, node_id, ID_COLUMNS, "node id")
@@ -285,6 +335,10 @@ def to_json(g, path=None, indent=2):
 def json_default(value):
     if hasattr(value, "item"):  # numpy scalars
         return value.item()
+    if isinstance(value, Decimal):
+        return float(value)
+    if hasattr(value, "isoformat"):  # dates and datetimes
+        return value.isoformat()
     if isinstance(value, (set, frozenset, tuple)):
         return list(value)
     return str(value)

@@ -21,3 +21,13 @@ def test_cli_summary(tmp_path, capsys):
 def test_cli_reports_errors(tmp_path, capsys):
     assert main([str(tmp_path / "missing.csv")]) == 1
     assert "file not found" in capsys.readouterr().err
+
+
+def test_cli_big_graph_options(tmp_path):
+    edges = tmp_path / "e.csv"
+    lines = ["source,target"] + [f"n{i},n{i + 1}" for i in range(50)]
+    edges.write_text(chr(10).join(lines), encoding="utf-8")
+    out = tmp_path / "g.html"
+    assert main([str(edges), "-o", str(out), "--renderer", "webgl", "--max-nodes", "20"]) == 0
+    page = out.read_text(encoding="utf-8")
+    assert '"renderer":"webgl"' in page and '"counts":{"nodes":20' in page

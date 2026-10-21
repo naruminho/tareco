@@ -79,8 +79,10 @@ class Graph:
     """A graph with attributes on nodes and edges.
 
     ``data`` can be almost anything with edges in it: a list of pairs, a dict of
-    neighbors, a CSV/JSON path, a pandas DataFrame, a networkx graph or another
-    Graph. ``nodes`` adds node attributes from the same kinds of sources.
+    neighbors, a CSV/JSON path, a pandas, polars or Spark DataFrame, a networkx
+    graph or another Graph. ``nodes`` adds node attributes from the same kinds
+    of sources. Spark DataFrames are streamed to the driver and refused above
+    ``max_rows`` rows (aggregate them in Spark first, or pass ``max_rows=None``).
 
     >>> g = Graph([("ana", "bia"), ("bia", "caio", 2.5)])
     >>> g.shortest_path("ana", "caio")
@@ -88,13 +90,13 @@ class Graph:
     """
 
     def __init__(self, data=None, *, directed=None, nodes=None, source=None,
-                 target=None, node_id=None, **attrs):
+                 target=None, node_id=None, max_rows=1_000_000, **attrs):
         self.attrs = dict(attrs)
         self._reset(bool(directed))
         if data is not None or nodes is not None:
             from .io import load_into
             load_into(self, data, directed=directed, nodes=nodes, source=source,
-                      target=target, node_id=node_id)
+                      target=target, node_id=node_id, max_rows=max_rows)
 
     def _new(self, directed):
         g = Graph(directed=directed)
@@ -386,9 +388,10 @@ class Graph:
         from .algorithms.centrality import pagerank
         return pagerank(self, alpha=alpha, weight=weight)
 
-    def betweenness(self, normalized=True, weight=None):
+    def betweenness(self, normalized=True, weight=None, k=None, seed=0):
+        """Bridge score of each node. Pass ``k`` (e.g. 500) to estimate it fast on big graphs."""
         from .algorithms.centrality import betweenness
-        return betweenness(self, normalized=normalized, weight=weight)
+        return betweenness(self, normalized=normalized, weight=weight, k=k, seed=seed)
 
     def closeness(self, weight=None):
         from .algorithms.centrality import closeness
@@ -500,7 +503,8 @@ class Graph:
         return to_html(self, **options)
 
     def _repr_html_(self):
-        if not self._nodes or len(self._nodes) > 3000:
+        # big graphs are trimmed by the view itself; past this, rendering would be a surprise
+        if not self._nodes or len(self._nodes) > 200_000:
             return None
         from .viz import notebook_html
         return notebook_html(self)

@@ -32,7 +32,8 @@ It also takes whatever you already have:
 ```python
 tareco.show([("ana", "bia"), ("bia", "caio", 3.5)])          # pairs, optional weight
 tareco.show({"ana": ["bia", "caio"], "bia": ["davi"]})       # dict of neighbors
-tareco.show(df)                                              # pandas DataFrame
+tareco.show(df)                                              # pandas or polars DataFrame
+tareco.show(spark_df)                                        # Spark DataFrame
 tareco.show("friends.csv", nodes="people.csv")               # node attributes too
 tareco.show(df, source="sender", target="receiver", directed=True)
 ```
@@ -41,6 +42,7 @@ From the terminal:
 
 ```bash
 tareco friends.csv --nodes people.csv --color city
+tareco transfers.csv --directed --max-nodes 20000 -o transfers.html
 ```
 
 ## The view
@@ -69,8 +71,67 @@ g.save("friends.html")       # standalone file, send it to anyone
 ```
 
 `color` and `size` also accept a `{node: value}` dict (like the output of any
-algorithm), a function of the node, or a fixed CSS color. In Jupyter, VS Code
-and Colab the view shows up inline; just leave a graph as the last line of a cell.
+algorithm), a function of the node, or a fixed CSS color.
+
+## Notebooks and Databricks
+
+In Jupyter, VS Code, Colab and Databricks, `g.show()` draws the graph right in
+the cell, and so does leaving a graph as the last line of a cell. On Databricks
+it goes through `displayHTML`. Where there is neither a notebook nor a browser
+(a cluster job, a server), the page is saved to a temporary file and its path is
+printed.
+
+Notebook output is kept under a size budget, because big outputs get cut:
+Databricks truncates cell output at 10 MB by default (DBR 17+). If a graph does
+not fit, tareco keeps its most important part and says so in the header
+(`48,000 of 1,200,000 nodes`). Pass `budget_mb=` to change it; on Databricks,
+`%set_cell_max_output_size_in_mb 20` raises the limit.
+
+## Spark
+
+```python
+from pyspark.sql import functions as F
+
+transfers = spark.table("payments.transfers")   # from_account, to_account, amount, ...
+
+edges = (transfers
+         .groupBy("from_account", "to_account")
+         .agg(F.sum("amount").alias("weight"), F.count("*").alias("count")))
+
+g = tareco.Graph(edges, source="from_account", target="to_account", directed=True)
+g.show(title="Transfers")
+```
+
+A Spark DataFrame is streamed to the driver one partition at a time (no pandas
+needed), and `DECIMAL` columns become floats. Anything above `max_rows` rows
+(1,000,000 by default) is refused with a hint to aggregate in Spark first, which
+is almost always the right move: a graph of who-pays-whom with a total per pair
+is far smaller than the raw transactions. `max_rows=None` lifts the limit.
+
+## Big graphs
+
+Tens of thousands of nodes are fine. The view changes strategy as the graph grows:
+
+- **Up to 2,000 nodes / 8,000 edges:** the canvas view above, animated.
+- **Bigger:** a WebGL view (sigma.js). The layout runs in a background
+  worker, so the page never freezes while it settles, and edges fade with
+  density so structure shows instead of a white blob. Nodes are pulled toward
+  their community, so groups read as islands.
+- **Group overview:** every community (or every value of a categorical `color`)
+  becomes one bubble, sized by members and linked by how much they interact.
+  Click a bubble to open just that group; very big graphs open here first.
+- **Trimming:** past `max_nodes` (50,000) or `max_edges` (200,000), only the
+  most important nodes (by PageRank) and the heaviest edges are embedded. The
+  overview still counts everything.
+
+```python
+g.show(renderer="webgl")              # force a renderer: "auto", "canvas", "webgl"
+g.show(max_nodes=20_000)              # embed less (smaller, faster page)
+g.betweenness(k=500)                  # estimate from 500 sources instead of all nodes
+```
+
+Community detection handles 50,000 nodes and 200,000 edges in about two
+seconds, in pure Python.
 
 ## The graph
 
@@ -98,7 +159,7 @@ g.reverse(), g.to_undirected(), g.copy()
 | Overview | `g.summary()` |
 | Shortest route | `g.shortest_path(a, b, weight=None)`, `g.distance(a, b)`, `g.distances(a)` |
 | Who is important | `g.pagerank()`, `g.degree_centrality()` |
-| Who bridges groups | `g.betweenness()` |
+| Who bridges groups | `g.betweenness(k=None)` (`k` sources estimate it fast) |
 | Who is close to everyone | `g.closeness()` |
 | Which groups exist | `g.communities()` (Louvain), `g.modularity(groups)` |
 | Are they connected | `g.components()`, `g.strong_components()`, `g.is_connected()` |
@@ -143,7 +204,8 @@ pip install -e ".[test]"
 pytest
 ```
 
-The interactive view is drawn with
-[force-graph](https://github.com/vasturiano/force-graph) (MIT), bundled inside
-the package so pages work offline. The 3D view loads
+The interactive views are drawn with
+[force-graph](https://github.com/vasturiano/force-graph),
+[sigma.js](https://www.sigmajs.org) and [graphology](https://graphology.github.io)
+(all MIT), bundled inside the package so pages work offline. The 3D view loads
 [3d-force-graph](https://github.com/vasturiano/3d-force-graph) from a CDN.

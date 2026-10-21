@@ -25,6 +25,9 @@ def main(argv=None):
     p.add_argument("--title", help="title shown on the page")
     p.add_argument("--3d", dest="dim", action="store_const", const=3, default=2, help="3D view")
     p.add_argument("--particles", action="store_true", help="animate flow along the edges")
+    p.add_argument("--renderer", choices=("auto", "canvas", "webgl"), default="auto",
+                   help="canvas for small graphs, WebGL for big ones (default: auto)")
+    p.add_argument("--max-nodes", type=int, help="keep only this many of the most important nodes")
     p.add_argument("--summary", action="store_true", help="print headline numbers and exit")
     p.add_argument("--version", action="version", version=f"tareco {__version__}")
     args = p.parse_args(argv)
@@ -36,7 +39,8 @@ def main(argv=None):
             print(g.summary())
             return 0
         view = dict(color=args.color, size=args.size, label=args.label, title=args.title,
-                    dim=args.dim, particles=args.particles)
+                    dim=args.dim, particles=args.particles, renderer=args.renderer,
+                    max_nodes=args.max_nodes)
         if args.output:
             print(g.save(args.output, **view))
         else:
