@@ -130,12 +130,12 @@ def test_budget_shrinks_the_page():
 
 
 def test_pages_are_plain_ascii():
-    g = tc.Graph([("João", "Ação"), ("Ação", "Zoë")], title="Transferências")
+    g = tc.Graph([("João", "Ação"), ("Ação", "Zoë")], title="Relações")
     for page in (to_html(g), to_html(g, renderer="webgl"), notebook_html(g)):
         assert all(ord(ch) < 128 for ch in page)
     data = payload_from_html(to_html(g, renderer="webgl"))
     assert data["nodes"]["label"] == ["João", "Ação", "Zoë"]
-    assert "<title>Transfer&#234;ncias</title>" in to_html(g)
+    assert "<title>Rela&#231;&#245;es</title>" in to_html(g)
 
 
 def test_slow_metrics_are_guarded(monkeypatch):

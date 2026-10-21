@@ -3,6 +3,7 @@ from collections import deque
 from heapq import heappop, heappush
 from itertools import count
 
+from ..errors import TarecoError
 from ..graph import _weight_fn
 from .paths import _search
 
@@ -41,13 +42,24 @@ def pagerank(g, alpha=0.85, weight="weight", max_iter=200, tol=1.0e-8):
     return x
 
 
-def betweenness(g, normalized=True, weight=None, k=None, seed=0):
+IGRAPH_ABOVE = 1_000  # "auto" hands exact betweenness to igraph above this many nodes
+
+
+def betweenness(g, normalized=True, weight=None, k=None, seed=0, engine="auto"):
     """How often each node sits on shortest paths between other nodes (Brandes).
 
     Exact betweenness costs one search per node, which gets slow past a few
     thousand nodes. With ``k`` only ``k`` random sources are used and the result
-    is scaled up: a good estimate in a fraction of the time.
+    is scaled up: a good estimate in a fraction of the time. When the optional
+    ``igraph`` package is installed, exact betweenness on big graphs runs there
+    (``engine="auto"``); ``engine="python"`` always uses tareco's own code.
     """
+    if engine not in ("auto", "python", "igraph"):
+        raise TarecoError('engine must be "auto", "python" or "igraph"')
+    if k is None and (engine == "igraph" or (engine == "auto" and len(g) > IGRAPH_ABOVE)):
+        fast = _igraph_betweenness(g, normalized, weight, required=engine == "igraph")
+        if fast is not None:
+            return fast
     bc = dict.fromkeys(g, 0.0)
     sources = list(g)
     if k is not None and k < len(sources):
@@ -75,6 +87,32 @@ def betweenness(g, normalized=True, weight=None, k=None, seed=0):
         for v in bc:
             bc[v] *= scale
     return bc
+
+
+def _igraph_betweenness(g, normalized, weight, required):
+    try:
+        import igraph
+    except ImportError:
+        if required:
+            raise TarecoError('engine="igraph" needs the igraph package: pip install igraph') from None
+        return None
+    nodes = list(g)
+    index = {n: i for i, n in enumerate(nodes)}
+    triples = [(u, v, d) for u, v, d in g._edge_triples() if u != v]
+    ig = igraph.Graph(n=len(nodes), edges=[(index[u], index[v]) for u, v, _ in triples],
+                      directed=g.directed)
+    weights = None
+    if weight is not None:
+        wt = _weight_fn(weight)
+        weights = [wt(d) for _, _, d in triples]
+    raw = ig.betweenness(directed=g.directed, weights=weights)
+    n = len(nodes)
+    if normalized:
+        # igraph counts each unordered pair once in undirected graphs; tareco counts both ways
+        scale = (1.0 if g.directed else 2.0) / ((n - 1) * (n - 2)) if n > 2 else 1.0
+    else:
+        scale = 1.0
+    return {node: raw[i] * scale for node, i in index.items()}
 
 
 def _bfs_paths(g, s):

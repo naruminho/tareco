@@ -80,6 +80,31 @@
     }
   }
   const X = Float32Array.from(N.x), Y = Float32Array.from(N.y);
+
+  // timelines: which periods each node and edge is active in
+  const time = cfg.time;
+  let period = null;
+  let nodeFirst = null, nodePeriods = null;
+  if (time) {
+    nodeFirst = new Int32Array(n).fill(1 << 30);
+    nodePeriods = Array.from({ length: n }, () => new Set());
+    for (let e = 0; e < m; e++) {
+      for (const p of E.p[e]) {
+        for (const i of [E.e[2 * e], E.e[2 * e + 1]]) {
+          nodePeriods[i].add(p);
+          if (p < nodeFirst[i]) nodeFirst[i] = p;
+        }
+      }
+    }
+  }
+  function activeNode(i) {
+    if (period === null) return true;
+    return time.cumulative ? nodeFirst[i] <= period : nodePeriods[i].has(period);
+  }
+  function activeEdge(e) {
+    if (period === null) return true;
+    return time.cumulative ? E.p[e][0] <= period : E.p[e].includes(period);
+  }
   let searchKeys = null;
 
   // ------------------------------------------------------------------ state
@@ -253,7 +278,8 @@
   // -------------------------------------------------------------- reducers
 
   function hiddenNode(data) {
-    return state.hidden.size > 0 && data.i !== undefined && state.hidden.has(N.cat[data.i]);
+    if (data.i === undefined) return false;
+    return (state.hidden.size > 0 && state.hidden.has(N.cat[data.i])) || !activeNode(data.i);
   }
   function nodeReducer(key, data) {
     if (hiddenNode(data)) return { ...data, hidden: true };
@@ -267,6 +293,7 @@
     return data;
   }
   function edgeReducer(key, data) {
+    if (period !== null && key[0] === "e" && !activeEdge(Number(key.slice(1)))) return { ...data, hidden: true };
     if (focus) {
       if (focus.edges.has(key)) return { ...data, color: focus.color, size: Math.max(1.4, data.size * 1.8), zIndex: 1 };
       return { ...data, hidden: true };
@@ -548,6 +575,10 @@
   }
   function spotlight(k) {
     const f = insights[k];
+    if (timebar && f.period !== null && f.period !== undefined) {
+      if (state.view.kind === "overview") buildView({ kind: "all" });
+      timebar.set(f.period);
+    }
     if (!f.nodes.length) return;
     const gi = f.kind === "group" && cfg.groupTitle === "community" ? G.key.indexOf(f.group) : -1;
     if (gi >= 0 && groupCount > 1) {
@@ -748,4 +779,10 @@
   addEventListener("resize", () => { if (renderer) renderer.refresh(); });
 
   buildView({ kind: cfg.start === "overview" && groupCount > 1 ? "overview" : "all" });
+
+  const timebar = tarecoTimebar(time, T, fmt, (p) => {
+    period = p;
+    if (state.selected && graph.hasNode(state.selected) && hiddenNode(graph.getNodeAttributes(state.selected))) clearAll();
+    else if (renderer) renderer.refresh();
+  });
 })();

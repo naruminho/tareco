@@ -15,7 +15,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install -e ".[test]"
       - run: pytest
-      - run: pip install networkx scipy pandas polars ipython nbclient nbformat ipykernel && pytest
+      - run: pip install networkx scipy pandas polars ipython nbclient nbformat ipykernel igraph && pytest
       - name: Real Spark (Java is preinstalled on the runner)
         if: matrix.python == '3.11'
         run: pip install pyspark && pytest tests/test_spark.py -rs

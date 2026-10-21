@@ -60,6 +60,15 @@
 
 <div id="legend" class="card" hidden></div>
 
+<div id="timebar" class="card" hidden>
+  <button id="time-play" aria-label="Play">
+    <svg class="icon i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></svg>
+    <svg class="icon i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+  </button>
+  <input id="time-range" type="range" min="0" max="0" step="1" aria-label="Period">
+  <span id="time-label"></span>
+</div>
+
 <aside id="panel" class="card" hidden>
   <div class="panel-head">
     <span id="panel-dot" class="dot"></span>

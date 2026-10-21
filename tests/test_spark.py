@@ -126,3 +126,18 @@ def test_real_spark(spark):
     assert g.shortest_path("ana", "caio") == ["ana", "caio"]
     with pytest.raises(TarecoError):
         tc.Graph(df, max_rows=2)
+
+
+def test_real_spark_neighborhood_and_export(spark, monkeypatch):
+    from tareco import around as nb
+    df = spark.createDataFrame(
+        [("a", "b", 1.0), ("b", "c", 2.0), ("c", "d", 3.0), ("x", "a", 4.0)],
+        "src string, dst string, amount double")
+    g = tc.neighborhood(df, start="a", hops=2)
+    assert {n: g.nodes[n]["hop"] for n in g} == {"a": 0, "b": 1, "x": 1, "c": 2}
+    monkeypatch.setattr(nb, "JOIN_ABOVE", 0)  # force the broadcast-join path
+    joined = tc.neighborhood(df, start="a", hops=2, direction="out", directed=True)
+    assert set(joined) == {"a", "b", "c"}
+    nodes, edges = g.to_spark(spark, metrics=["degree", "community"])
+    assert nodes.count() == 4 and edges.count() == 3
+    assert set(nodes.columns) >= {"id", "hop", "degree", "community"}

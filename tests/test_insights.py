@@ -124,15 +124,15 @@ def test_explain_loose_groups_are_called_so():
 def test_explain_hubs_and_flows():
     g = tc.Graph(directed=True)
     for i in range(40):
-        g.add_edge(f"s{i}", "mule")
+        g.add_edge(f"s{i}", "sink")
         g.add_edge(f"s{i}", f"s{(i + 1) % 40}")
     for i in range(8):
-        g.add_edge("boss", f"t{i}")
-    g.add_edge("mule", "boss")
+        g.add_edge("source", f"t{i}")
+    g.add_edge("sink", "source")
     text = str(g.explain())
-    assert "mule receives from 40 nodes but sends to 1." in text
-    assert "boss sends to 8 nodes but receives from 1." in text
-    assert "mule has" in text and "more connections than a typical node" in text
+    assert "sink receives from 40 nodes but sends to 1." in text
+    assert "source sends to 8 nodes but receives from 1." in text
+    assert "sink has" in text and "more connections than a typical node" in text
     assert "of the links go both ways." in text
 
 

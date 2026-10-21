@@ -99,16 +99,18 @@ class Profiles(list):
 class Finding:
     """One plain-language statement, with the nodes it is about."""
 
-    __slots__ = ("kind", "text", "nodes", "group")
+    __slots__ = ("kind", "text", "nodes", "group", "period")
 
-    def __init__(self, kind, text, nodes=(), group=None):
+    def __init__(self, kind, text, nodes=(), group=None, period=None):
         self.kind = kind
         self.text = text
         self.nodes = list(nodes)
         self.group = group
+        self.period = period
 
     def to_dict(self):
-        return {"kind": self.kind, "text": self.text, "nodes": self.nodes, "group": self.group}
+        return {"kind": self.kind, "text": self.text, "nodes": self.nodes, "group": self.group,
+                "period": self.period}
 
     def __repr__(self):
         return self.text
@@ -130,6 +132,14 @@ class Explanation:
 
     def to_dict(self):
         return [f.to_dict() for f in self.findings]
+
+    def to_pandas(self):
+        try:
+            import pandas as pd
+        except ImportError:
+            raise TarecoError("to_pandas needs pandas: pip install pandas") from None
+        return pd.DataFrame([{"kind": f.kind, "text": f.text, "group": f.group, "nodes": list(f.nodes)}
+                             for f in self.findings])
 
     def __str__(self):
         lines = [i18n.text(self.lang, "title")]
@@ -406,10 +416,29 @@ def explain(g, groups=None, lang=None, top=5, label=None, weight="weight",
     if clear:
         findings += _brokers(g, group_of, names, degree, lang, name)
     findings += _hubs(g, degree, lang, name)
+    if m:
+        findings += _pattern_findings(g, lang, label, weight)
     if g.directed and m:
-        findings += _flows(g, lang, name)
+        findings += _reciprocity(g, lang)
     findings += _weights(g, weight, lang, name)
     return Explanation(findings, profiles, lang)
+
+
+# most telling first; explain() keeps a few, patterns() has them all
+PATTERN_PRIORITY = ("cycle", "pass_through", "fan_in", "fan_out", "chain", "back_and_forth",
+                    "clique", "star")
+
+
+def _pattern_findings(g, lang, label, weight, per_kind=2, total=6):
+    from .patterns import find_patterns
+    found = find_patterns(g, lang=lang, limit=per_kind, weight=weight, label=label)
+    out = []
+    for kind in PATTERN_PRIORITY:
+        for p in found.of(kind):
+            if kind == "clique" and len(p.nodes) < 5:
+                continue  # small cliques are everywhere in social data
+            out.append(Finding(kind, p.text, p.nodes))
+    return out[:total]
 
 
 def _brokers(g, group_of, names, degree, lang, name):
@@ -447,25 +476,12 @@ def _hubs(g, degree, lang, name):
             for x in hubs]
 
 
-def _flows(g, lang, name):
-    out = []
-    ins, outs = g.in_degree(), g.out_degree()
-    collectors = sorted((x for x in g if ins[x] >= 5 and outs[x] * 4 <= ins[x]), key=lambda x: -ins[x])[:2]
-    distributors = sorted((x for x in g if outs[x] >= 5 and ins[x] * 4 <= outs[x]), key=lambda x: -outs[x])[:2]
-    nobody = i18n.text(lang, "nobody")
-    for x in collectors:
-        out.append(Finding("collector", i18n.text(lang, "collector", name=name(x), k=i18n.number(ins[x], lang),
-                                                  out=i18n.number(outs[x], lang) if outs[x] else nobody),
-                           [x] + g.predecessors(x)))
-    for x in distributors:
-        out.append(Finding("distributor", i18n.text(lang, "distributor", name=name(x), k=i18n.number(outs[x], lang),
-                                                    inn=i18n.number(ins[x], lang) if ins[x] else nobody),
-                           [x] + g.successors(x)))
+def _reciprocity(g, lang):
     links = [(u, v) for u, v, _ in g._edge_triples() if u != v]
-    if links:
-        both = sum(1 for u, v in links if g.has_edge(v, u))
-        out.append(Finding("reciprocity", i18n.text(lang, "reciprocity", pct=i18n.percent(both / len(links), lang))))
-    return out
+    if not links:
+        return []
+    both = sum(1 for u, v in links if g.has_edge(v, u))
+    return [Finding("reciprocity", i18n.text(lang, "reciprocity", pct=i18n.percent(both / len(links), lang)))]
 
 
 def _weights(g, weight, lang, name):

@@ -296,6 +296,22 @@ div.finding { color: var(--muted); }
 .chip .dot { width: 8px; height: 8px; }
 .chips .sep { color: var(--muted); width: 14px; height: 14px; }
 
+#timebar {
+  left: 320px;
+  right: 352px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 8px;
+  z-index: 2;
+}
+#timebar[hidden] { display: none; }
+#time-range { flex: 1; min-width: 80px; accent-color: var(--accent); }
+#time-label { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); min-width: 120px; text-align: right; }
+#time-play .i-pause, #time-play.on .i-play { display: none; }
+#time-play.on .i-pause { display: block; }
+
 #toast {
   position: fixed;
   left: 50%;
@@ -339,4 +355,5 @@ button:disabled { opacity: 0.35; cursor: default; background: transparent; }
   .header { left: 12px; right: 12px; top: 12px; width: auto; }
   #legend { left: 12px; bottom: 12px; width: auto; right: 12px; max-height: 26vh; }
   #panel { top: auto; left: 12px; right: 12px; bottom: 12px; width: auto; max-height: 55vh; }
+  #timebar { left: 12px; right: 12px; bottom: calc(26vh + 24px); }
 }

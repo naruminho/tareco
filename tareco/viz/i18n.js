@@ -32,6 +32,9 @@ function tarecoText(lang) {
       none: "none",
       more: (k) => `+${k} more`,
       less: "Less",
+      allPeriods: "All periods",
+      play: "Play",
+      pause: "Pause",
     },
     pt: {
       locale: "pt-BR",
@@ -63,6 +66,9 @@ function tarecoText(lang) {
       none: "nenhum",
       more: (k) => `+${k} outros`,
       less: "Menos",
+      allPeriods: "Todos os per\u00edodos",
+      play: "Reproduzir",
+      pause: "Pausar",
     },
   };
   const T = all[lang] || all.en;

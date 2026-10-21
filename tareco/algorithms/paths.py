@@ -119,3 +119,80 @@ def diameter(g):
     if len(g) == 0:
         raise TarecoError("the graph is empty")
     return max(eccentricity(g).values())
+
+
+def _restricted_path(g, source, target, weight, banned_nodes, banned_edges):
+    """Shortest path avoiding some nodes and edges; ``None`` when there is none."""
+    wt = _weight_fn(weight)
+    dist = {source: 0}
+    parent = {source: None}
+    tie = count()
+    heap = [(0, next(tie), source)]
+    done = set()
+    while heap:
+        d, _, u = heappop(heap)
+        if u in done:
+            continue
+        done.add(u)
+        if u == target:
+            path = [target]
+            while path[-1] != source:
+                path.append(parent[path[-1]])
+            path.reverse()
+            return d, path
+        for v, attrs in g._succ[u].items():
+            if v in banned_nodes or (u, v) in banned_edges or v in done:
+                continue
+            nd = d + (wt(attrs) if weight is not None else 1)
+            if v not in dist or nd < dist[v]:
+                dist[v] = nd
+                parent[v] = u
+                heappush(heap, (nd, next(tie), v))
+    return None
+
+
+def _path_cost(g, path, weight):
+    if weight is None:
+        return len(path) - 1
+    wt = _weight_fn(weight)
+    return sum(wt(g._succ[a][b]) for a, b in zip(path, path[1:]))
+
+
+def k_shortest_paths(g, source, target, k=3, weight=None):
+    """Up to ``k`` loopless paths from ``source`` to ``target``, shortest first (Yen).
+
+    Handy when the best route is not enough: the alternatives show how much two
+    nodes depend on a single path.
+    """
+    g._check(source)
+    g._check(target)
+    first = _restricted_path(g, source, target, weight, set(), set())
+    if first is None:
+        raise NoPath(f"no path from {source!r} to {target!r}")
+    found = [first[1]]
+    seen = {tuple(first[1])}
+    candidates = []
+    tie = count()
+    while len(found) < k:
+        last = found[-1]
+        for j in range(len(last) - 1):
+            spur = last[j]
+            root = last[:j + 1]
+            banned_edges = set()
+            for p in found:
+                if len(p) > j and p[:j + 1] == root:
+                    banned_edges.add((p[j], p[j + 1]))
+                    if not g.directed:
+                        banned_edges.add((p[j + 1], p[j]))
+            spur_path = _restricted_path(g, spur, target, weight, set(root[:-1]), banned_edges)
+            if spur_path is None:
+                continue
+            path = root[:-1] + spur_path[1]
+            key = tuple(path)
+            if key not in seen:
+                seen.add(key)
+                heappush(candidates, (_path_cost(g, path, weight), next(tie), path))
+        if not candidates:
+            break
+        found.append(heappop(candidates)[2])
+    return found

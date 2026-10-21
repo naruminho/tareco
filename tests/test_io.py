@@ -156,3 +156,10 @@ def test_networkx_interop():
     assert g.directed and g.edges["a", "b"] == {"weight": 2} and g.nodes["a"] == {"color": "red"}
     back = g.to_networkx()
     assert back.is_directed() and back["a"]["b"]["weight"] == 2
+
+
+def test_lone_short_names_are_not_endpoints():
+    g = tc.Graph([{"s": "a", "t": "b", "v": 3}])
+    assert g.has_edge("a", "b") and g.edges["a", "b"] == {"v": 3}
+    uv = tc.Graph([{"weight": 1, "u": "a", "v": "b"}])
+    assert uv.has_edge("a", "b")

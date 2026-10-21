@@ -43,7 +43,10 @@ From the terminal:
 ```bash
 tareco friends.csv --nodes people.csv --color city
 tareco friends.csv --nodes people.csv --explain --lang pt
-tareco transfers.csv --directed --max-nodes 20000 -o transfers.html
+tareco orders.csv --directed --max-nodes 20000 -o orders.html
+tareco messages.csv --time sent_at --lang pt              # replay over time
+tareco messages.csv --around ana --hops 2                 # just the neighborhood of ana
+tareco friends.csv --nodes people.csv --report -o friends-report.html
 ```
 
 ## What the network shows
@@ -69,9 +72,9 @@ What this network shows
 `explain()` reports the facts worth acting on: separate parts and isolated
 nodes, groups and **what characterizes each one** (attributes that are much more
 common, or numbers much higher or lower, than in the whole network), the most
-important nodes, bridges between groups, hubs, nodes that only receive or only
-send (directed graphs), how concentrated the weight is. Each finding also carries
-the nodes it talks about (`for f in g.explain(): f.text, f.nodes`).
+important nodes, bridges between groups, hubs, the most telling patterns (below)
+and how concentrated the weight is. Each finding also carries the nodes it talks
+about (`for f in g.explain(): f.text, f.nodes`).
 
 In the interactive view the same findings sit behind the insights button: click
 one to light up its nodes, or to open that group. The legend shows each group's
@@ -82,6 +85,88 @@ g.profile()                     # every group in detail: traits, key members, co
 g.profile(groups="segment")     # or group by any attribute, dict or list of sets
 tareco.set_language("pt")       # explanations and the interface in Portuguese
 ```
+
+## Patterns
+
+```python
+g.patterns()
+```
+
+```
+- a, b and c form a loop: a to b to c to a. Up to 80 can go all the way around.
+- relay receives from 6 nodes and passes almost all of it on to 6 (60 in, 60 out).
+- sink receives from 6 nodes but sends to none.
+- A chain of 3 intermediaries: c to d to e to f to g.
+- x and y send each other similar amounts (50 and 48).
+- hub is the only connection of 12 nodes.
+```
+
+Shapes worth a second look, in plain words: **loops** where things go around and
+come back (with how much can make the full turn), **fan-in** and **fan-out**,
+**relays** that pass on about what they receive, **chains** of intermediaries,
+**back-and-forth** pairs, **stars** and **cliques**. Loops, fans, relays and
+chains need a directed graph. `g.patterns(kinds=["cycle"], max_cycle=5)` narrows
+the search; every pattern has `kind`, `nodes`, `score` and `text`.
+
+## Over time
+
+```python
+tl = tareco.timeline(messages, time="sent_at")   # one row per event, any table
+tl.explain()
+tl.show()                                         # with a time slider and a play button
+```
+
+```
+- From 2026-01 to 2026-06 (6 months): 61 nodes and 467 connections in total.
+- The busiest period was 2026-05, with 137 connections.
+- 30 new nodes showed up in 2026-04.
+- star appeared in 2026-05 with 25 connections at once.
+- Two groups merged in 2026-05: the one around p58 and the one around p29.
+```
+
+`timeline` reads dates, datetimes, ISO text, `dd/mm/yyyy` or `mm/dd/yyyy` (worked
+out from the data) and plain numbers, and picks days, weeks, months, quarters or
+years so there are at most 24 periods (`freq=` to choose). It reports activity
+jumps and drops, waves of newcomers, nodes whose connections suddenly jump,
+groups that form, merge or split, and quiet periods.
+
+```python
+tl["2026-05"]               # the network of one period (a Graph)
+tl.union                    # everything, with first/last period on each edge
+tl.activity()               # nodes, connections and weight per period
+tl.spread("ana")            # who could have heard from ana, following events in order
+tareco.timeline(rows, time="day", cumulative=True, weight="amount")
+```
+
+In the view, the slider replays the periods; clicking a dated insight jumps to
+its period.
+
+## Around a node, in huge tables
+
+```python
+near = tareco.neighborhood(spark.table("chat.messages"), start="ana", hops=2,
+                           source="sender", target="receiver")
+near.show(color="hop")
+```
+
+When a table is far too big to load, start from the nodes you care about and
+grow outward. With Spark every hop is a query that runs in the cluster (a
+broadcast join when the frontier is large); only the matching edges come back.
+It also works on pandas DataFrames, CSV files and rows. `max_nodes` (5,000) caps
+the growth, keeping the most connected nodes of the last hop.
+
+## Reports and tables
+
+```python
+g.report("friends-report.html")               # findings, group and node tables, the graph
+tl.report("messages-report.html")             # plus activity per period and the slider
+nodes, edges = g.to_pandas(metrics=["pagerank", "community", "degree"])
+nodes, edges = g.to_spark(spark, metrics=["community"])   # back to the lakehouse
+g.explain().to_pandas(), g.profile().to_pandas(), g.patterns().to_pandas()
+```
+
+The report is one self-contained HTML file to send to someone who will never
+open a notebook.
 
 ## Two-sided data
 
@@ -152,14 +237,14 @@ not fit, tareco keeps its most important part and says so in the header
 ```python
 from pyspark.sql import functions as F
 
-transfers = spark.table("payments.transfers")   # from_account, to_account, amount, ...
+messages = spark.table("chat.messages")        # sender, receiver, sent_at, ...
 
-edges = (transfers
-         .groupBy("from_account", "to_account")
-         .agg(F.sum("amount").alias("weight"), F.count("*").alias("count")))
+edges = (messages
+         .groupBy("sender", "receiver")
+         .agg(F.count("*").alias("weight")))
 
-g = tareco.Graph(edges, source="from_account", target="to_account", directed=True)
-g.show(title="Transfers")
+g = tareco.Graph(edges, source="sender", target="receiver", directed=True)
+g.show(title="Who talks to whom")
 ```
 
 A Spark DataFrame is streamed to the driver one partition at a time (no pandas
@@ -189,6 +274,10 @@ g.show(renderer="webgl")              # force a renderer: "auto", "canvas", "web
 g.show(max_nodes=20_000)              # embed less (smaller, faster page)
 g.betweenness(k=500)                  # estimate from 500 sources instead of all nodes
 ```
+
+Exact betweenness needs a search from every node. With the optional `igraph`
+package installed (`pip install igraph`), it runs there for graphs above 1,000
+nodes, about 15 times faster; tareco itself stays dependency-free.
 
 Community detection handles 50,000 nodes and 200,000 edges in about two
 seconds, in pure Python.
@@ -228,6 +317,9 @@ g.reverse(), g.to_undirected(), g.copy()
 | The core | `g.core_number()`, `g.k_core(k)` |
 | Who should meet | `g.suggest_links(node=None, top=10)` (Adamic-Adar) |
 | Cheapest wiring | `g.spanning_tree(weight="weight")` |
+| How much can flow, and the bottleneck | `g.max_flow(a, b, capacity="weight")` (`.value`, `.flows`, `.cut`) |
+| Alternative routes | `g.k_shortest_paths(a, b, k=3, weight=None)` |
+| Shapes worth a look | `g.patterns()` |
 | Order of tasks | `g.topological_sort()`, `g.has_cycle()` |
 | Size of the world | `g.diameter()` |
 | Walk it | `g.bfs(a)`, `g.dfs(a)` |

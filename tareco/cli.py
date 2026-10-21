@@ -7,6 +7,8 @@ from . import __version__
 from .errors import TarecoError
 from .bipartite import project
 from .graph import Graph
+from .around import neighborhood
+from .temporal import timeline
 
 
 def main(argv=None):
@@ -33,13 +35,26 @@ def main(argv=None):
     p.add_argument("--explain", action="store_true", help="print what the network shows, in plain words")
     p.add_argument("--lang", choices=("en", "pt"), help="language of the explanation and the page")
     p.add_argument("--project", nargs=2, metavar=("NODES", "VIA"),
-                   help="two-sided table: link NODES that share VIA (e.g. --project cliente produto)")
+                   help="two-sided table: link NODES that share VIA (e.g. --project customer product)")
+    p.add_argument("--time", metavar="COLUMN", help="events with a time column: replay them on a time slider")
+    p.add_argument("--around", nargs="+", metavar="NODE", help="only the neighborhood of these nodes")
+    p.add_argument("--hops", type=int, default=2, help="steps out for --around (default: 2)")
+    p.add_argument("--patterns", action="store_true", help="print loops, fans, chains, stars and cliques")
+    p.add_argument("--report", action="store_true", help="write a shareable report (with -o) instead of the bare view")
     p.add_argument("--version", action="version", version=f"tareco {__version__}")
     args = p.parse_args(argv)
 
     try:
-        if args.project:
+        tl = None
+        if args.time:
+            tl = timeline(args.edges, time=args.time, source=args.source, target=args.target,
+                          directed=args.directed, nodes=args.nodes)
+            g = tl.union
+        elif args.project:
             g = project(args.edges, nodes=args.project[0], via=args.project[1])
+        elif args.around:
+            g = neighborhood(args.edges, start=args.around, hops=args.hops, source=args.source,
+                             target=args.target, directed=args.directed)
         else:
             g = Graph(args.edges, nodes=args.nodes, directed=args.directed or None,
                       source=args.source, target=args.target)
@@ -47,12 +62,28 @@ def main(argv=None):
             print(g.summary())
             return 0
         if args.explain:
-            print(g.explain(lang=args.lang, label=args.label))
+            print((tl or g).explain(lang=args.lang, label=args.label))
+            return 0
+        if args.patterns:
+            print(g.patterns(lang=args.lang, label=args.label))
+            return 0
+        if args.report:
+            if not args.output:
+                raise TarecoError("--report needs -o FILE.html")
+            print((tl or g).report(args.output, title=args.title, lang=args.lang, label=args.label))
             return 0
         view = dict(color=args.color, size=args.size, label=args.label, title=args.title,
                     dim=args.dim, particles=args.particles, renderer=args.renderer,
                     max_nodes=args.max_nodes, lang=args.lang)
-        if args.output:
+        if args.around and view["color"] is None:
+            view["color"] = "hop"
+        if tl is not None:
+            view.pop("lang")
+            if args.output:
+                print(tl.save(args.output, lang=args.lang, **view))
+            else:
+                tl.show(lang=args.lang, **view)
+        elif args.output:
             print(g.save(args.output, **view))
         else:
             g.show(**view)

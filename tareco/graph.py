@@ -388,10 +388,20 @@ class Graph:
         from .algorithms.centrality import pagerank
         return pagerank(self, alpha=alpha, weight=weight)
 
-    def betweenness(self, normalized=True, weight=None, k=None, seed=0):
+    def betweenness(self, normalized=True, weight=None, k=None, seed=0, engine="auto"):
         """Bridge score of each node. Pass ``k`` (e.g. 500) to estimate it fast on big graphs."""
         from .algorithms.centrality import betweenness
-        return betweenness(self, normalized=normalized, weight=weight, k=k, seed=seed)
+        return betweenness(self, normalized=normalized, weight=weight, k=k, seed=seed, engine=engine)
+
+    def max_flow(self, source, target, capacity="weight"):
+        """How much can go from ``source`` to ``target``, and the bottleneck edges (min cut)."""
+        from .algorithms.flow import max_flow
+        return max_flow(self, source, target, capacity=capacity)
+
+    def k_shortest_paths(self, source, target, k=3, weight=None):
+        """The ``k`` best loopless routes between two nodes, shortest first."""
+        from .algorithms.paths import k_shortest_paths
+        return k_shortest_paths(self, source, target, k=k, weight=weight)
 
     def closeness(self, weight=None):
         from .algorithms.centrality import closeness
@@ -505,6 +515,17 @@ class Graph:
         return project_graph(self, nodes, method=method, min_shared=min_shared,
                              max_item_size=max_item_size)
 
+    def patterns(self, kinds=None, lang=None, limit=10, weight="weight", max_cycle=4, label=None,
+                 min_fan=5):
+        """Shapes worth a look: loops, fan-ins and fan-outs, relays, chains, stars, cliques.
+
+        Each pattern has ``kind``, ``nodes``, ``score`` and a plain-language ``text``.
+        Loops, fans, relays and chains need a directed graph.
+        """
+        from .patterns import find_patterns
+        return find_patterns(self, kinds=kinds, lang=lang, limit=limit, weight=weight,
+                             max_cycle=max_cycle, label=label, min_fan=min_fan)
+
     def summary(self):
         """Headline numbers about the graph."""
         from .algorithms.structure import summary
@@ -521,6 +542,14 @@ class Graph:
         """Write the interactive view to a standalone HTML file."""
         from .viz import save
         return save(self, path, **options)
+
+    def report(self, path=None, title=None, lang=None, label=None, **view):
+        """A single HTML file with the findings, group and node tables, and the graph.
+
+        Made to be sent to someone. Returns the path, or the HTML when ``path`` is None.
+        """
+        from .report import report
+        return report(self, path, title=title, lang=lang, label=label, **view)
 
     def to_html(self, **options):
         from .viz import to_html
@@ -545,10 +574,20 @@ class Graph:
         from .io import to_csv
         to_csv(self, edges_path, nodes_path)
 
-    def to_pandas(self):
-        """``(nodes, edges)`` as two pandas DataFrames."""
+    def to_pandas(self, metrics=None):
+        """``(nodes, edges)`` as two pandas DataFrames.
+
+        ``metrics`` adds node columns: any of "degree", "in_degree",
+        "out_degree", "pagerank", "betweenness", "closeness", "clustering",
+        "core", "community", "component".
+        """
         from .io import to_pandas
-        return to_pandas(self)
+        return to_pandas(self, metrics)
+
+    def to_spark(self, spark, metrics=None):
+        """``(nodes, edges)`` as Spark DataFrames (same ``metrics`` as ``to_pandas``)."""
+        from .metrics import to_spark
+        return to_spark(self, spark, metrics)
 
     def to_networkx(self):
         from .io import to_networkx

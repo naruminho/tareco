@@ -58,6 +58,28 @@
   }
   [...nodes].sort((a, b) => b.val - a.val).forEach((n, i) => { n.rank = i; });
 
+  // timelines: which periods each node and link is active in
+  const time = cfg.time;
+  let period = null;
+  if (time) {
+    for (const n of nodes) { n.tp = new Set(); n.first = Infinity; }
+    for (const l of links) {
+      const a = byId.get(l.source), b = byId.get(l.target);
+      for (const p of l.p) {
+        a.tp.add(p); b.tp.add(p);
+        a.first = Math.min(a.first, p); b.first = Math.min(b.first, p);
+      }
+    }
+  }
+  function activeNode(n) {
+    if (period === null) return true;
+    return time.cumulative ? n.first <= period : n.tp.has(period);
+  }
+  function activeLink(l) {
+    if (period === null) return true;
+    return time.cumulative ? l.p[0] <= period : l.p.includes(period);
+  }
+
   function ends(l) {
     const a = typeof l.source === "object" ? l.source : byId.get(l.source);
     const b = typeof l.target === "object" ? l.target : byId.get(l.target);
@@ -117,7 +139,7 @@
     if (is3D) fg.nodeColor(fg.nodeColor()).linkColor(fg.linkColor()).linkWidth(fg.linkWidth());
   }
   function visible(n) {
-    return !state.hidden.has(n.group);
+    return !state.hidden.has(n.group) && activeNode(n);
   }
 
   // ------------------------------------------------------------------ graph
@@ -131,7 +153,7 @@
     .nodeLabel(nodeTip)
     .linkLabel(linkTip)
     .nodeVisibility(visible)
-    .linkVisibility((l) => { const [a, b] = ends(l); return visible(a) && visible(b); })
+    .linkVisibility((l) => { const [a, b] = ends(l); return visible(a) && visible(b) && activeLink(l); })
     .linkCurvature((l) => l.curve)
     .linkColor(linkColor)
     .linkWidth(linkWidth)
@@ -416,6 +438,7 @@
     update();
   }
   function spotlight(k) {
+    if (timebar && insights[k].period !== null && insights[k].period !== undefined) timebar.set(insights[k].period);
     const list = insights[k].nodes.map((i) => byId.get(i)).filter((n) => n && visible(n));
     if (!list.length) return;
     const set = new Set(list);
@@ -593,4 +616,10 @@
     refreshVisibility();
   });
   renderLegend();
+
+  const timebar = tarecoTimebar(time, T, fmt, (p) => {
+    period = p;
+    fg.nodeVisibility(fg.nodeVisibility()).linkVisibility(fg.linkVisibility());
+    if (state.selected && !visible(state.selected)) clearAll();
+  });
 })();

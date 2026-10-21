@@ -13,6 +13,7 @@ SOURCE_COLUMNS = ("source", "from", "src", "origin", "origem", "de", "sender",
 TARGET_COLUMNS = ("target", "to", "dst", "destination", "dest", "destino", "para",
                   "receiver", "end", "child", "v", "node2")
 ID_COLUMNS = ("id", "node", "name", "key", "label", "nome")
+PAIRED = {"u": "v", "v": "u", "node1": "node2", "node2": "node1"}
 DECIMAL_COMMA = re.compile(r"^-?\d+,\d+$")
 MAX_ROWS = 1_000_000
 
@@ -329,7 +330,11 @@ def _pick_column(columns, explicit, candidates, role, exclude=None):
             raise TarecoError(f"no column {explicit!r} for {role}; columns are {columns}")
         return explicit
     lowered = {str(c).strip().lower(): c for c in columns if c != exclude}
+    present = {str(c).strip().lower() for c in columns}
     for name in candidates:
+        # short names only mean source/target as a pair: a lone "v" is more likely a value
+        if name in PAIRED and PAIRED[name] not in present:
+            continue
         if name in lowered:
             return lowered[name]
     free = [c for c in columns if c != exclude]
@@ -386,13 +391,14 @@ def to_csv(g, edges_path, nodes_path=None):
                 w.writerow([n] + [d.get(c, "") for c in node_cols])
 
 
-def to_pandas(g):
+def to_pandas(g, metrics=None):
     try:
         import pandas as pd
     except ImportError:
         raise TarecoError("to_pandas needs pandas: pip install pandas") from None
-    nodes = pd.DataFrame([{"id": n, **d} for n, d in g.nodes.items()], columns=None)
-    edges = pd.DataFrame([{"source": u, "target": v, **d} for u, v, d in g._edge_triples()])
+    from .metrics import edge_rows, node_rows
+    nodes = pd.DataFrame(node_rows(g, metrics))
+    edges = pd.DataFrame(edge_rows(g))
     if nodes.empty:
         nodes = pd.DataFrame(columns=["id"])
     if edges.empty:
