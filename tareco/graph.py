@@ -84,19 +84,26 @@ class Graph:
     of sources. Spark DataFrames are streamed to the driver and refused above
     ``max_rows`` rows (aggregate them in Spark first, or pass ``max_rows=None``).
 
+    ``weight`` names the column that says how strong each connection is (an
+    amount, a count). Without it, a single numeric column called weight,
+    peso, valor, value, amount, quantidade, qtd, count or total is used.
+    Every algorithm and the view then use it by default.
+
     >>> g = Graph([("ana", "bia"), ("bia", "caio", 2.5)])
     >>> g.shortest_path("ana", "caio")
     ['ana', 'bia', 'caio']
     """
 
     def __init__(self, data=None, *, directed=None, nodes=None, source=None,
-                 target=None, node_id=None, max_rows=1_000_000, **attrs):
+                 target=None, node_id=None, weight=None, max_rows=1_000_000, **attrs):
         self.attrs = dict(attrs)
         self._reset(bool(directed))
         if data is not None or nodes is not None:
             from .io import load_into
             load_into(self, data, directed=directed, nodes=nodes, source=source,
                       target=target, node_id=node_id, max_rows=max_rows)
+        from .io import choose_weight
+        choose_weight(self, weight)
 
     def _new(self, directed):
         g = Graph(directed=directed)
@@ -232,6 +239,22 @@ class Graph:
         self._check(node)
         return list(self._succ[node])
 
+    def top_neighbors(self, node, n=5, weight="weight"):
+        """The neighbors ``node`` is most strongly connected to, as ``[(neighbor, weight), ...]``.
+
+        "Who buys X also buys", "who talks most to Ana": the heaviest edges first.
+        """
+        self._check(node)
+        wt = _weight_fn(weight, self)
+        pairs = {}
+        for other, d in self._succ[node].items():
+            pairs[other] = pairs.get(other, 0) + wt(d)
+        if self.directed:
+            for other, d in self._pred[node].items():
+                pairs[other] = pairs.get(other, 0) + wt(d)
+        pairs.pop(node, None)
+        return sorted(pairs.items(), key=lambda kv: -kv[1])[:n]
+
     def successors(self, node):
         self._check(node)
         return list(self._succ[node])
@@ -255,7 +278,7 @@ class Graph:
         return self._per_node(node, lambda n: self._degree_of(n, weight, "out"))
 
     def _degree_of(self, n, weight, mode):
-        wt = _weight_fn(weight)
+        wt = _weight_fn(weight, self)
         out = sum(wt(d) for d in self._succ[n].values())
         if not self.directed:
             if n in self._succ[n]:
@@ -466,6 +489,11 @@ class Graph:
         from .algorithms.structure import topological_sort
         return topological_sort(self)
 
+    def find_cycle(self):
+        """One cycle as a list of nodes, or None. Any length, including a <-> b."""
+        from .algorithms.structure import find_cycle
+        return find_cycle(self)
+
     def has_cycle(self):
         from .algorithms.structure import has_cycle
         return has_cycle(self)
@@ -598,8 +626,16 @@ class Graph:
         return f"<Graph {kind}, {self.node_count} nodes, {self.edge_count} edges>"
 
 
-def _weight_fn(weight):
+def _resolve_weight(g, weight):
+    """The graph's own weight column stands in for the default name "weight"."""
+    if weight == "weight" and g is not None:
+        return g.attrs.get("weight") or weight
+    return weight
+
+
+def _weight_fn(weight, g=None):
     """``attrs -> number`` for an edge attribute name; missing values count as 1."""
+    weight = _resolve_weight(g, weight)
     if weight is None:
         return lambda d: 1
     return lambda d: d.get(weight, 1)

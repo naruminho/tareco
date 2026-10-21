@@ -221,6 +221,24 @@ def test_topological_sort_and_cycles():
     assert tc.Graph([("a", "a")]).has_cycle()
 
 
+def test_find_cycle_names_one_of_any_length():
+    def closes(g, cycle):
+        return all(g.has_edge(a, b) for a, b in zip(cycle, cycle[1:] + cycle[:1]))
+
+    deps = tc.Graph([("app", "config"), ("config", "cache"), ("cache", "config"), ("app", "utils")], directed=True)
+    assert sorted(deps.find_cycle()) == ["cache", "config"] and closes(deps, deps.find_cycle())
+    ring = tc.Graph([("a", "b"), ("b", "c"), ("c", "d"), ("d", "b")], directed=True)
+    assert sorted(ring.find_cycle()) == ["b", "c", "d"] and closes(ring, ring.find_cycle())
+    assert tc.Graph([("a", "b"), ("b", "c"), ("a", "c")], directed=True).find_cycle() is None
+    assert tc.Graph([("a", "a")], directed=True).find_cycle() == ["a"]
+    assert tc.path_graph(5).find_cycle() is None
+    tri = two_triangles()
+    found = tri.find_cycle()
+    assert len(found) == 3 and closes(tri, found)
+    big = tc.cycle_graph(7)
+    assert sorted(big.find_cycle()) == list(range(7)) and closes(big, big.find_cycle())
+
+
 def test_density():
     assert tc.complete_graph(5).density() == 1.0
     assert tc.complete_graph(4, directed=True).density() == 1.0

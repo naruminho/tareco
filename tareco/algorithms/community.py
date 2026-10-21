@@ -10,7 +10,7 @@ def _undirected_weights(g, weight):
     nodes = list(g)
     index = {n: i for i, n in enumerate(nodes)}
     adj = [defaultdict(float) for _ in nodes]
-    wt = _weight_fn(weight)
+    wt = _weight_fn(weight, g)
     for u, v, d in g._edge_triples():
         w = float(wt(d))
         i, j = index[u], index[v]

@@ -198,13 +198,16 @@ class Timeline:
 
         seen = set()
         waves = []
+        before = 0
         for p in range(P):
             active = set(degrees[p])
             new = active - seen
-            if p and len(new) >= max(3, 0.1 * len(active)):
+            # a network filling up (100, 40, 17, ... newcomers) is not a wave; a jump is
+            if p and len(new) >= max(3, 0.05 * len(active)) and len(new) >= 2 * before:
                 waves.append((len(new), Finding("newcomers", T("newcomers", k=num(len(new)), period=self.periods[p]),
-                                                sorted(new, key=lambda x: -degrees[p][x]), period=p)))
+                                                sorted(new, key=lambda x: (-degrees[p][x], str(x))), period=p)))
             seen |= active
+            before = len(new)
         out += [f for _, f in sorted(waves, key=lambda w: -w[0])[:2]]
 
         history = Counter()
@@ -231,44 +234,69 @@ class Timeline:
         return out[:limit]
 
     def _group_changes(self, graphs, degrees, lang, name):
-        def groups_of(g, deg):
+        def groups_of(g):
+            """Communities of a period, and whether they are real groups (modularity >= 0.3)."""
             if g.edge_count < 5:
-                return []
-            return [c for c in g.communities() if len(c) >= 5]
+                return [], False
+            comms = g.communities()
+            return [c for c in comms if len(c) >= 5], g.modularity(comms) >= 0.3
 
         def around(c, deg):
-            return sorted(c, key=lambda x: -deg.get(x, 0))[:3]
+            return sorted(c, key=lambda x: (-deg.get(x, 0), str(x)))[:3]
 
+        past = Graph()  # everything before the current period, undirected
+        past_groups = []
+
+        def together_before(c):
+            """Were most of these people already in one group, looking at all earlier periods?"""
+            if not past_groups:
+                past_groups.extend(past.communities() if past.edge_count else [])
+            return max((len(c & q) for q in past_groups), default=0) >= 0.5 * len(c)
+
+        everyone = len(self.union)
+        seen = set()
         out = []
-        prev = None
+        prev, prev_real = None, False
         for p, g in enumerate(graphs):
-            cur = groups_of(g, degrees[p])
-            if prev is not None and cur:
+            cur, cur_real = groups_of(g)
+            # early on everything is new: wait until most nodes have shown up, and a fifth of the timeline
+            settled = len(seen) >= 0.5 * everyone and p >= len(graphs) // 5
+            seen |= set(degrees[p])
+            if prev is not None and cur and settled:
                 pdeg = degrees[p - 1]
                 for c in cur:
                     best = max((len(c & q) / len(c | q) for q in prev), default=0)
-                    parents = [q for q in prev if len(c & q) >= 0.3 * len(q)]
-                    if len(parents) >= 2:
+                    # a merger: most of each old group is now in this one, and they make up most of it
+                    parents = [q for q in prev if len(c & q) >= 0.6 * len(q & set(degrees[p]) or q)]
+                    if sum(len(c & q) for q in parents) < 0.7 * len(c):
+                        parents = []
+                    if len(parents) >= 2 and prev_real:  # merging needs real groups before
                         a, b = (around(q, pdeg)[0] for q in parents[:2])
                         out.append((len(c), Finding("merge", i18n.text(lang, "merge", period=self.periods[p],
                                                                         a=name(a), b=name(b)), sorted(c, key=str), period=p)))
-                    elif best < 0.2:
+                    elif best < 0.2 and cur_real and not together_before(c):
+                        # a new group needs real groups after, and people who were not a group
+                        # before; a known group that just did not show up last period is not news
                         names = i18n.join([name(x) for x in around(c, degrees[p])], lang)
                         out.append((len(c), Finding("new_group", i18n.text(lang, "new_group", k=i18n.number(len(c), lang),
                                                                             period=self.periods[p], names=names),
                                                     sorted(c, key=str), period=p)))
                 active = set(degrees[p])
-                for q in prev:
+                for q in (prev if cur_real else []):
                     still = q & active
                     if len(still) < 5:
                         continue
-                    children = [c for c in cur if len(c & still) >= 0.3 * len(still)]
+                    children = [c for c in cur if len(c & still) >= 0.3 * len(still) and len(c & still) >= 0.6 * len(c)]
                     if len(children) >= 2:
                         names = i18n.join([name(around(c, degrees[p])[0]) for c in children[:3]], lang)
                         out.append((len(q), Finding("split", i18n.text(lang, "split", period=self.periods[p],
                                                                         a=name(around(q, pdeg)[0]), names=names),
                                                     sorted(set().union(*children), key=str), period=p)))
-            prev = cur if cur else prev
+            if cur:
+                prev, prev_real = cur, cur_real
+            for u, v in g.edges:
+                past.add_edge(u, v)
+            past_groups.clear()
         return [f for _, f in sorted(out, key=lambda o: -o[0])]
 
     def explain(self, lang=None, label=None, limit=12):

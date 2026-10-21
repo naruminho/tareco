@@ -1,0 +1,20 @@
+estacao_a,estacao_b,minutos,linha
+Aeroporto,Vila Nova,5,Azul
+Vila Nova,Centro,6,Azul
+Centro,Praca,4,Azul
+Praca,Mercado,4,Azul
+Mercado,Universidade,3,Azul
+Universidade,Parque,3,Azul
+Rodoviaria,Hospital,2,Verde
+Hospital,Praca,4,Verde
+Praca,Catedral,6,Verde
+Catedral,Estadio,5,Verde
+Estadio,Lagoa,6,Verde
+Porto,Fabrica,2,Vermelha
+Fabrica,Centro,4,Vermelha
+Centro,Catedral,6,Vermelha
+Catedral,Shopping,6,Vermelha
+Shopping,Bairro Alto,2,Vermelha
+Universidade,Shopping,5,Amarela
+Shopping,Estadio,3,Amarela
+Estadio,Jardim,5,Amarela

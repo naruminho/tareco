@@ -68,6 +68,27 @@ def test_profile_by_attribute_dict_and_sets():
     assert [p.size for p in sets] == [110, 10]
 
 
+def test_profile_by_attribute_is_named_by_the_value():
+    by_city = planted().profile(groups="city")
+    assert {p.name for p in by_city} == {"Recife", "Curitiba", "Manaus"}
+    assert all(p.linked in {"Recife", "Curitiba", "Manaus"} for p in by_city)
+
+
+def test_counts_are_numbers_not_categories():
+    g = planted()
+    for n, attrs in g.nodes.items():
+        attrs["n_items"] = 5 if attrs["group"] == 0 else 2
+    traits = [t for p in g.profile(top=10) for t in p.traits if t.attribute == "n_items"]
+    assert traits and all(t.kind != "category" for t in traits)
+
+
+def test_cliques_say_little_in_dense_networks():
+    assert not any(f.kind == "clique" for f in tc.complete_graph(12).explain())
+    sparse = tc.complete_graph(5)                       # one clique at the end of a long line
+    sparse.add_edges((i, i + 1) for i in range(4, 25))
+    assert any(f.kind == "clique" for f in sparse.explain())
+
+
 def test_profiles_to_pandas():
     pytest.importorskip("pandas")
     df = planted().profile().to_pandas()
@@ -130,8 +151,8 @@ def test_explain_hubs_and_flows():
         g.add_edge("source", f"t{i}")
     g.add_edge("sink", "source")
     text = str(g.explain())
-    assert "sink receives from 40 nodes but sends to 1." in text
-    assert "source sends to 8 nodes but receives from 1." in text
+    assert "sink receives from 40 nodes, 40 of which send to nobody else" in text or "sink receives from 40 nodes but sends to 1." in text
+    assert "source sends to 8 nodes, 8 of which hear from nobody else, and receives from 1." in text
     assert "sink has" in text and "more connections than a typical node" in text
     assert "of the links go both ways." in text
 

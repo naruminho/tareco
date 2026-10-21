@@ -281,8 +281,10 @@ def _reduce(g, max_nodes, max_edges, metric):
     else:
         triples = list(g._edge_triples())
     if len(triples) > max_edges:
+        weight = g.attrs.get("weight") or "weight"
+
         def importance(t):
-            w = _number(t[2].get("weight"))
+            w = _number(t[2].get(weight))
             return (w if w is not None else 1.0, rank[t[0]] + rank[t[1]])
         triples = sorted(triples, key=importance, reverse=True)[:max_edges]
     return nodes, triples
@@ -296,9 +298,10 @@ def _defaults(g, color, size):
     return color, size
 
 
-def _edge_width_attr(edge_width, triples):
-    if edge_width is None and any(_number(d.get("weight")) is not None for _, _, d in triples):
-        return "weight"
+def _edge_width_attr(g, edge_width, triples):
+    weight = g.attrs.get("weight") or "weight"
+    if edge_width is None and any(_number(d.get(weight)) is not None for _, _, d in triples):
+        return weight
     return edge_width
 
 
@@ -332,7 +335,7 @@ def build_payload(g, nodes=None, triples=None, metric=None, color=None, size=Non
     lang, findings, notes, _ = _insights(g, nodes, metric, legend, color, lang, label, insights)
     sizes = _sizes(g, nodes, size, metric)
     shown = _shown_metrics(g, color, size, metric)
-    edge_width = _edge_width_attr(edge_width, triples)
+    edge_width = _edge_width_attr(g, edge_width, triples)
     widths = _scale([_number(d.get(edge_width)) if edge_width else None for _, _, d in triples],
                     0.6, 5.0, 1.0)
 
@@ -412,7 +415,7 @@ def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, si
         cat_index = {("" if it.get("missing") else it["label"]): i for i, it in enumerate(legend["items"])}
 
     columns = list(dict.fromkeys(k for n in nodes for k in g.nodes[n]))[:MAX_ATTR_COLUMNS]
-    edge_width = _edge_width_attr(edge_width, triples)
+    edge_width = _edge_width_attr(g, edge_width, triples)
     plain = [(u, v, d) for u, v, d in triples if u != v]  # sigma draws no self-loops
     widths = _scale([_number(d.get(edge_width)) if edge_width else None for _, _, d in plain],
                     0.5, 4.0, None) if edge_width else None
@@ -559,13 +562,14 @@ def _overview_groups(g, color, legend, metric, lang="en"):
 
 
 def _group_edges(g, group_of):
+    weight = g.attrs.get("weight") or "weight"
     weights = {}
     for u, v, d in g._edge_triples():
         a, b = group_of[u], group_of[v]
         if a == b:
             continue
         key = (a, b) if a < b else (b, a)
-        w = _number(d.get("weight"))
+        w = _number(d.get(weight))
         weights[key] = weights.get(key, 0.0) + (w if w is not None and w > 0 else 1.0)
     flat, ws = [], []
     for (a, b), w in weights.items():

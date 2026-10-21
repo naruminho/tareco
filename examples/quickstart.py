@@ -23,5 +23,5 @@ g.show(color="city", size="betweenness", edge_width="messages", title="Friends b
 
 # Two-sided data: link people through the things they share.
 purchases = [("Ana", "rice"), ("Bia", "rice"), ("Bia", "coffee"), ("Caio", "coffee"), ("Ana", "beans")]
-shoppers = tareco.project(purchases)
+shoppers = tc.project(purchases)
 print(shoppers.edges["Ana", "Bia"])   # {'weight': 1, 'shared': 1, 'examples': 'rice'}

@@ -105,6 +105,29 @@ def test_changes_tell_the_story():
     assert "30 nós novos apareceram em 2026-04." in pt
 
 
+def classes(party=None):
+    """Three weeks of eight classes, each meeting in random pairs every day; maybe a party on day 10."""
+    rng = random.Random(3)
+    people = [f"P{i:03d}" for i in range(160)]
+    rows = []
+    for d in range(1, 22):
+        for c in range(8):
+            for _ in range(6):
+                a, b = rng.sample(people[c * 20:(c + 1) * 20], 2)
+                rows.append((a, b, f"2026-05-{d:02d}"))
+        if d == 10 and party:
+            rows += [(party, p, "2026-05-10") for p in rng.sample(people, 40) if p != party]
+    return tc.timeline(rows, time=2, freq="day")
+
+
+def test_a_network_filling_up_is_not_news():
+    quiet = classes()
+    kinds = {f.kind for f in quiet.changes()}
+    assert "newcomers" not in kinds and "new_group" not in kinds
+    party = [f for f in classes(party="P077").changes() if f.kind == "new_group"]
+    assert len(party) == 1 and "P077" in party[0].nodes and len(party[0].nodes) >= 20
+
+
 def test_activity_and_groups_changes():
     rows = []
     for i in range(10):

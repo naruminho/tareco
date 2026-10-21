@@ -1,5 +1,6 @@
 """Plain-language text for explanations and the view, in English and Portuguese."""
 
+import locale
 import os
 
 from .errors import TarecoError
@@ -9,9 +10,9 @@ _default = None
 
 
 def set_language(lang):
-    """Language for explanations and the interactive view: "en" or "pt"."""
+    """Language for explanations and the interactive view: "en" or "pt"; None goes back to automatic."""
     global _default
-    _default = _check(lang)
+    _default = None if lang is None else _check(lang)
 
 
 def get_language(lang=None):
@@ -20,7 +21,22 @@ def get_language(lang=None):
     if _default is not None:
         return _default
     env = os.environ.get("TARECO_LANG", "").lower()[:2]
-    return env if env in LANGUAGES else "en"
+    if env in LANGUAGES:
+        return env
+    return _system_language() or "en"
+
+
+def _system_language():
+    """Portuguese when the computer is set to Portuguese, so nobody has to ask for it."""
+    for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(var, "").lower()
+        if value and value not in ("c", "posix", "c.utf-8"):
+            return "pt" if value.startswith("pt") else None
+    try:
+        code = (locale.getlocale()[0] or "").lower()
+    except (ValueError, TypeError):
+        code = ""
+    return "pt" if code.startswith(("pt", "portuguese")) else None
 
 
 def _check(lang):
@@ -81,7 +97,9 @@ TEXT = {
         "broker": "{name} is a bridge between groups: it links {groups}.",
         "hub": "{name} has {times}x more connections than a typical node ({d} vs {median}).",
         "collector": "{name} receives from {k} nodes but sends to {out}.",
+        "collector_only": "{name} receives from {k} nodes, {only} of which send to nobody else, and sends to {out}.",
         "distributor": "{name} sends to {k} nodes but receives from {inn}.",
+        "distributor_only": "{name} sends to {k} nodes, {only} of which hear from nobody else, and receives from {inn}.",
         "nobody": "none",
         "reciprocity": "{pct} of the links go both ways.",
         "concentration": "The heaviest 10% of the connections carry {pct} of the total {weight}.",
@@ -140,7 +158,9 @@ TEXT = {
         "broker": "{name} é uma ponte entre grupos: liga {groups}.",
         "hub": "{name} tem {times}x mais conexões que um nó típico ({d} contra {median}).",
         "collector": "{name} recebe de {k} nós mas envia para {out}.",
+        "collector_only": "{name} recebe de {k} nós, {only} deles não enviam para mais ninguém, e envia para {out}.",
         "distributor": "{name} envia para {k} nós mas recebe de {inn}.",
+        "distributor_only": "{name} envia para {k} nós, {only} deles não recebem de mais ninguém, e recebe de {inn}.",
         "nobody": "nenhum",
         "reciprocity": "{pct} das ligações são de mão dupla.",
         "concentration": "Os 10% de conexões mais fortes concentram {pct} do total de {weight}.",
@@ -184,7 +204,8 @@ TEXT = {
 
 
 METRIC_NAMES = {
-    "pt": {"community": "comunidade", "degree": "grau", "betweenness": "intermediação",
+    "en": {"count": "occurrences"},
+    "pt": {"count": "ocorrências","community": "comunidade", "degree": "grau", "betweenness": "intermediação",
            "closeness": "proximidade", "clustering": "agrupamento", "core": "núcleo",
            "component": "componente", "pagerank": "pagerank", "in": "entrada", "out": "saída"},
 }

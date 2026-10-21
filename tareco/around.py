@@ -7,8 +7,8 @@ edges come back to Python.
 
 from .errors import TarecoError
 from .graph import Graph
-from .io import (MAX_ROWS, SOURCE_COLUMNS, TARGET_COLUMNS, _is_dataframe, _is_spark, _missing,
-                 _pick_column, _spark_rows, iter_table)
+from .io import (MAX_ROWS, SOURCE_COLUMNS, TARGET_COLUMNS, EdgeMerger, _is_dataframe, _is_spark,
+                 _missing, _pick_column, _spark_rows, iter_table)
 
 JOIN_ABOVE = 2_000   # Spark: match more nodes than this with a broadcast join instead of isin
 
@@ -37,7 +37,8 @@ def neighborhood(data, start, hops=2, source=None, target=None, directed=False, 
     t = _pick_column(columns, target, TARGET_COLUMNS, "target", exclude=s)
 
     hop_of = {n: 0 for n in starts}
-    edges = {}
+    edges = []
+    seen_rows = set()
     frontier = set(starts)
     truncated = False
     for h in range(1, hops + 1):
@@ -48,7 +49,10 @@ def neighborhood(data, start, hops=2, source=None, target=None, directed=False, 
             u, v = row.get(s), row.get(t)
             if _missing(u) or _missing(v):
                 continue
-            edges[(u, v)] = row
+            key = tuple(sorted((str(k), repr(val)) for k, val in row.items()))
+            if key not in seen_rows:  # the same row comes back when both ends are in the frontier
+                seen_rows.add(key)
+                edges.append(row)
             for node in (u, v):
                 if node not in hop_of:
                     touching[node] = touching.get(node, 0) + 1
@@ -65,10 +69,15 @@ def neighborhood(data, start, hops=2, source=None, target=None, directed=False, 
     g = Graph(directed=directed)
     for node, h in sorted(hop_of.items(), key=lambda kv: kv[1]):
         g._add_node(node, {"hop": h})
-    for (u, v), row in edges.items():
+    merger = EdgeMerger(g)
+    for row in edges:
+        u, v = row.get(s), row.get(t)
         if u in hop_of and v in hop_of:
-            g._add_edge(u, v, {k: val for k, val in row.items() if k not in (s, t) and not _missing(val)})
+            merger.add(u, v, {k: val for k, val in row.items() if k not in (s, t) and not _missing(val)})
+    merger.finish()
     g.attrs.update({"start": starts, "hops": hops, "truncated": truncated})
+    from .io import choose_weight
+    choose_weight(g)
     return g
 
 

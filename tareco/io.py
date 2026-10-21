@@ -4,6 +4,7 @@ import csv
 import json
 import os
 import re
+import warnings
 from decimal import Decimal
 
 from .errors import TarecoError
@@ -12,8 +13,11 @@ SOURCE_COLUMNS = ("source", "from", "src", "origin", "origem", "de", "sender",
                   "start", "parent", "u", "node1")
 TARGET_COLUMNS = ("target", "to", "dst", "destination", "dest", "destino", "para",
                   "receiver", "end", "child", "v", "node2")
-ID_COLUMNS = ("id", "node", "name", "key", "label", "nome")
+ID_COLUMNS = ("id", "node", "name", "key", "label", "nome", "conta", "account", "cliente", "customer",
+              "usuario", "user", "pessoa", "person", "codigo", "code")
 PAIRED = {"u": "v", "v": "u", "node1": "node2", "node2": "node1"}
+WEIGHT_COLUMNS = ("weight", "peso", "valor", "value", "amount", "quantidade", "qtd", "count", "total",
+                  "montante", "quantity")
 DECIMAL_COMMA = re.compile(r"^-?\d+,\d+$")
 MAX_ROWS = 1_000_000
 
@@ -28,6 +32,32 @@ def load_into(g, data, *, directed=None, nodes=None, source=None, target=None, n
         _add_nodes_from(g, _resolve(nodes), node_id, max_rows)
     if data is not None:
         _add_data(g, data, source, target, node_id, max_rows)
+
+
+class GuessWarning(UserWarning):
+    """tareco had to guess which column means what."""
+
+
+def choose_weight(g, weight=None):
+    """Remember which edge attribute is the weight: the one asked for, or an obvious one."""
+    names = list(dict.fromkeys(k for _, _, d in g._edge_triples() for k in d))
+    if weight is not None:
+        if weight not in names and g.edge_count:
+            raise TarecoError(f"no edge column {weight!r} for weight; edge columns are {names}")
+        g.attrs["weight"] = weight
+        return
+    if "weight" in g.attrs or "weight" in names or not g.edge_count:
+        return
+    numeric = [n for n in names if str(n).strip().lower() in WEIGHT_COLUMNS and all(
+        _is_number(d[n]) for _, _, d in g._edge_triples() if n in d)]
+    if len(numeric) > 1 and "count" in numeric:  # count may be the one tareco added when merging rows
+        numeric.remove("count")
+    if len(numeric) == 1:
+        g.attrs["weight"] = numeric[0]
+
+
+def _is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value == value
 
 
 def read_csv(path, nodes=None, *, directed=False, source=None, target=None, node_id=None):
@@ -59,6 +89,11 @@ def _read_path(path):
     if not os.path.exists(path):
         raise TarecoError(f"file not found: {path}")
     ext = os.path.splitext(path)[1].lower()
+    if ext in (".xlsx", ".xlsm"):
+        from .excel import read_excel
+        return read_excel(path)
+    if ext == ".xls":
+        raise TarecoError(f"{path} is an old .xls file; save it as .xlsx (or CSV) and try again")
     if ext == ".json":
         with open(path, encoding="utf-8") as f:
             return json.load(f)
@@ -302,6 +337,7 @@ def _add_edge_records(g, records, source, target, columns=None):
         columns = list(dict.fromkeys(k for r in records for k in r))
     s = _pick_column(columns, source, SOURCE_COLUMNS, "source")
     t = _pick_column(columns, target, TARGET_COLUMNS, "target", exclude=s)
+    merger = EdgeMerger(g)
     for r in records:
         u, v = r.get(s), r.get(t)
         if _missing(u):
@@ -309,7 +345,40 @@ def _add_edge_records(g, records, source, target, columns=None):
         if _missing(v):
             g._add_node(u, {})
         else:
-            g._add_edge(u, v, _clean(r, (s, t)))
+            merger.add(u, v, _clean(r, (s, t)))
+    merger.finish()
+
+
+class EdgeMerger:
+    """Tables often repeat a pair (one row per transfer, per message). Repeats become one
+    edge whose numeric columns are summed, with ``count`` saying how many rows it holds."""
+
+    def __init__(self, g):
+        self.g = g
+        self.rows = {}
+        self.repeated = False
+
+    def add(self, u, v, attrs):
+        g = self.g
+        if g.has_edge(u, v):
+            d = g._succ[u][v]
+            if id(d) in self.rows:
+                self.repeated = True
+                self.rows[id(d)][1] += 1
+                for k, value in attrs.items():
+                    if _is_number(value) and _is_number(d.get(k)):
+                        d[k] += value
+                    else:
+                        d.setdefault(k, value)
+                return
+        g._add_edge(u, v, attrs)
+        d = g._succ[u][v]
+        self.rows[id(d)] = [d, 1]
+
+    def finish(self):
+        if self.repeated:
+            for d, n in self.rows.values():
+                d["count"] = n
 
 
 def _add_nodes_from(g, nodes, node_id, max_rows=MAX_ROWS):
@@ -348,6 +417,10 @@ def _pick_column(columns, explicit, candidates, role, exclude=None):
             return lowered[name]
     free = [c for c in columns if c != exclude]
     if free:
+        if isinstance(free[0], str) and role != "node id":  # node tables lead with the id by convention
+            option = {"source": "source", "target": "target"}.get(role, "node_id")
+            warnings.warn(f"no column looks like the {role}, so {free[0]!r} was used; pass "
+                          f"{option}=... to choose another", GuessWarning, stacklevel=4)
         return free[0]
     raise TarecoError(f"cannot tell which column is the {role}; columns are {columns}")
 

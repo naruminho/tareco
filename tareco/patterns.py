@@ -85,9 +85,10 @@ class _Context:
     def __init__(self, g, lang, weight, label):
         self.g = g
         self.lang = lang
-        self.weight = weight
+        from .graph import _resolve_weight
+        self.weight = _resolve_weight(g, weight)
         self.label = label
-        self.weighted = bool(weight) and any(_is_number(d.get(weight)) for _, _, d in g._edge_triples())
+        self.weighted = bool(self.weight) and any(_is_number(d.get(self.weight)) for _, _, d in g._edge_triples())
 
     def w(self, u, v):
         value = self.g._succ[u][v].get(self.weight) if self.weight else None
@@ -113,11 +114,20 @@ def _is_number(v):
 
 def _cycles(ctx, max_len, limit):
     g = ctx.g
+    # a loop never leaves its strongly connected component, so search one component at a
+    # time, heaviest first: shops that only receive and payers that only send are skipped
+    comps = [c for c in g.strong_components() if len(c) >= 3]
+    comps.sort(key=lambda c: -sum(ctx.w(u, v) for u in c for v in g._succ[u] if v in c))
+    member = {n: i for i, c in enumerate(comps) for n in c}
     order = {n: i for i, n in enumerate(g)}
     cycles = []
     steps = 0
-    for start in g:
+    starts = [n for c in comps for n in sorted(c, key=order.get)]
+    for start in starts:
+        if steps >= STEP_BUDGET:
+            break
         rank = order[start]
+        home = member[start]
         stack = [(start, iter(g._succ[start]))]
         path = [start]
         on_path = {start}
@@ -128,7 +138,7 @@ def _cycles(ctx, max_len, limit):
                 steps += 1
                 if v == start and len(path) >= 3:
                     cycles.append(list(path))
-                elif v not in on_path and order[v] > rank and len(path) < max_len:
+                elif v not in on_path and order[v] > rank and len(path) < max_len and member.get(v) == home:
                     stack.append((v, iter(g._succ[v])))
                     path.append(v)
                     on_path.add(v)
@@ -165,9 +175,12 @@ def _fans(ctx, kind, min_fan, limit):
         receivers = [v for v in g._succ[x] if v != x]
         k_in, k_out = len(senders), len(receivers)
         if kind == "fan_in" and k_in >= min_fan and k_out * 4 <= k_in:
-            out.append((k_in, x, senders, k_in, k_out))
+            # senders that send to nobody else make a fan-in stand out; a shop's customers do not
+            only = sum(1 for u in senders if len(g._succ[u]) - (u in g._succ[u]) == 1)
+            out.append((only + k_in / 1000, x, senders, k_in, k_out, only))
         elif kind == "fan_out" and k_out >= min_fan and k_in * 4 <= k_out:
-            out.append((k_out, x, receivers, k_in, k_out))
+            only = sum(1 for v in receivers if len(g._pred[v]) - (v in g._pred[v]) == 1)
+            out.append((only + k_out / 1000, x, receivers, k_in, k_out, only))
         elif kind == "pass_through" and k_in >= min_fan and k_out >= min_fan:
             got = sum(ctx.w(u, x) for u in senders)
             gave = sum(ctx.w(x, v) for v in receivers)
@@ -180,9 +193,15 @@ def _fans(ctx, kind, min_fan, limit):
         score, x, others = item[0], item[1], item[2]
         k_in, k_out = item[3], item[4]
         if kind == "fan_in":
-            text = ctx.text("collector", name=ctx.name(x), k=ctx.num(k_in), out=ctx.num(k_out) if k_out else nobody)
+            only = item[5]
+            key = "collector_only" if only >= max(3, 0.5 * k_in) else "collector"
+            text = ctx.text(key, name=ctx.name(x), k=ctx.num(k_in), only=ctx.num(only),
+                            out=ctx.num(k_out) if k_out else nobody)
         elif kind == "fan_out":
-            text = ctx.text("distributor", name=ctx.name(x), k=ctx.num(k_out), inn=ctx.num(k_in) if k_in else nobody)
+            only = item[5]
+            key = "distributor_only" if only >= max(3, 0.5 * k_out) else "distributor"
+            text = ctx.text(key, name=ctx.name(x), k=ctx.num(k_out), only=ctx.num(only),
+                            inn=ctx.num(k_in) if k_in else nobody)
         else:
             got, gave = item[5], item[6]
             key = "pass_through_amount" if ctx.weighted else "pass_through"
@@ -291,8 +310,9 @@ def _cliques(ctx, limit, min_size=4):
             return
         if len(r) + len(p) < min_size:
             return
-        pivot = max(p | x, key=lambda u: len(nbrs[u] & p))
-        for v in list(p - nbrs[pivot]):
+        # sets iterate in a different order every run; going by position keeps the result stable
+        pivot = max(sorted(p | x, key=position.get), key=lambda u: len(nbrs[u] & p))
+        for v in sorted(p - nbrs[pivot], key=position.get):
             expand(r + [v], p & nbrs[v], x & nbrs[v])
             p.discard(v)
             x.add(v)
@@ -302,7 +322,7 @@ def _cliques(ctx, limit, min_size=4):
         earlier = {u for u in nbrs[v] if position[u] < position[v]}
         if len(later) + 1 >= min_size:
             expand([v], later, earlier)
-    found.sort(key=len, reverse=True)
+    found.sort(key=lambda c: (-len(c), sorted(map(str, c))))
     out = []
     for c in found[:limit]:
         names = [ctx.name(x) for x in c]

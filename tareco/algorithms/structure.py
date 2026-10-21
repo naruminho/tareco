@@ -97,7 +97,7 @@ class _DisjointSet:
 
 def spanning_tree(g, weight="weight", maximum=False):
     """Minimum (or maximum) spanning forest, as a new undirected graph (Kruskal)."""
-    wt = _weight_fn(weight)
+    wt = _weight_fn(weight, g)
     edges = sorted(g._edge_triples(), key=lambda e: wt(e[2]), reverse=maximum)
     tree = g._new(False)
     for n, d in g.nodes.items():
@@ -126,6 +126,55 @@ def topological_sort(g):
     if len(order) < len(g):
         raise HasCycle("the graph has a cycle, so it has no topological order")
     return order
+
+
+def find_cycle(g):
+    """One cycle as a list of nodes (``[a, b, c]`` for a -> b -> c -> a), or None."""
+    if g.directed:
+        color = {}
+        for root in g:
+            if root in color:
+                continue
+            stack = [(root, iter(g._succ[root]))]
+            path = [root]
+            color[root] = 1
+            while stack:
+                node, nbrs = stack[-1]
+                for v in nbrs:
+                    if color.get(v) == 1:
+                        return path[path.index(v):]
+                    if v not in color:
+                        color[v] = 1
+                        stack.append((v, iter(g._succ[v])))
+                        path.append(v)
+                        break
+                else:
+                    stack.pop()
+                    color[path.pop()] = 2
+        return None
+    parent = {}
+    for root in g:
+        if root in parent:
+            continue
+        parent[root] = None
+        stack = [root]
+        while stack:
+            u = stack.pop()
+            for v in g._succ[u]:
+                if v == u:
+                    return [u]
+                if v not in parent:
+                    parent[v] = u
+                    stack.append(v)
+                elif parent[u] != v:
+                    a, b = [u], [v]
+                    while a[-1] is not None:
+                        a.append(parent[a[-1]])
+                    while b[-1] is not None:
+                        b.append(parent[b[-1]])
+                    common = next(x for x in a if x in set(b))
+                    return a[:a.index(common) + 1] + b[:b.index(common)][::-1]
+    return None
 
 
 def has_cycle(g):

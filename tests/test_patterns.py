@@ -27,8 +27,8 @@ def test_every_kind_on_a_directed_flow():
     assert cycle.text.endswith("Up to 80 can go all the way around.")
     assert found.of("chain")[0].nodes == ["c", "d", "e", "f", "g"]
     assert found.of("pass_through")[0].nodes[0] == "relay"
-    assert found.of("fan_in")[0].text == "sink receives from 6 nodes but sends to none."
-    assert found.of("fan_out")[0].text == "source sends to 6 nodes but receives from none."
+    assert found.of("fan_in")[0].text == "sink receives from 6 nodes, 6 of which send to nobody else, and sends to none."
+    assert found.of("fan_out")[0].text == "source sends to 6 nodes, 6 of which hear from nobody else, and receives from none."
     assert found.of("back_and_forth")[0].details == {"there": 50, "back": 48}
 
 

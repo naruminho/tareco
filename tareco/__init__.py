@@ -1,9 +1,20 @@
-"""tareco: graphs made simple, with zero dependencies.
+"""tareco: from a table of connections to an interactive graph and plain-language answers.
 
->>> import tareco
->>> tareco.show("friends.csv")              # one line, interactive view
->>> g = tareco.Graph([("ana", "bia"), ("bia", "caio")])
->>> g.pagerank(), g.communities(), g.shortest_path("ana", "caio")
+Start here:
+
+    import tareco
+    tareco.show("friends.csv")                      # the interactive graph
+    print(tareco.explain("friends.csv"))            # what it shows, in words
+    tareco.report("friends.csv", "report.html")     # one file to send to someone
+
+The table can be a CSV or Excel file, a pandas/polars/Spark DataFrame or a list
+of pairs. Columns like from/to, source/target or origem/destino are found on
+their own; a column such as valor/amount/quantity becomes the weight.
+
+Then go further with ``g = tareco.Graph(data)``: g.explain(), g.profile(),
+g.patterns(), g.communities(), g.pagerank(), g.shortest_path(a, b), and
+tareco.timeline(...), tareco.project(...), tareco.neighborhood(...) for time,
+two-sided tables and huge tables. tareco.doctor() checks your environment.
 """
 
 from . import algorithms, generators
@@ -16,11 +27,12 @@ from .checkup import doctor
 from .temporal import Timeline, timeline
 from .graph import Graph
 from .i18n import set_language
-from .io import read_csv, read_json
+from .excel import read_excel
+from .io import GuessWarning, read_csv, read_json
 
 __version__ = "1.3.0"
 
-_LOAD_OPTIONS = ("directed", "nodes", "source", "target", "node_id", "max_rows")
+_LOAD_OPTIONS = ("directed", "nodes", "source", "target", "node_id", "max_rows", "weight")
 
 
 def _split(options):
@@ -36,23 +48,43 @@ def show(data, **options):
     ``node_id``) and view options (``color``, ``size``, ``label``, ``title``,
     ``dim``...) can be mixed freely.
     """
-    load, view = _split(options)
-    g = data if isinstance(data, Graph) and not load else Graph(data, **load)
+    g, view = _graph(data, options)
     g.show(**view)
 
 
 def save(data, path, **options):
     """Like ``show``, but writes a standalone HTML file and returns its path."""
-    load, view = _split(options)
-    g = data if isinstance(data, Graph) and not load else Graph(data, **load)
+    g, view = _graph(data, options)
     return g.save(path, **view)
 
 
+def explain(data, **options):
+    """What the network in ``data`` shows, in plain language (see ``Graph.explain``).
+
+    >>> print(tareco.explain("transfers.csv", lang="pt"))
+    """
+    g, rest = _graph(data, options)
+    return g.explain(**rest)
+
+
+def report(data, path=None, **options):
+    """One shareable HTML file about ``data``: findings, tables and the graph (see ``Graph.report``)."""
+    g, rest = _graph(data, options)
+    return g.report(path, **rest)
+
+
+def _graph(data, options):
+    load, rest = _split(dict(options))
+    if isinstance(data, (Graph, Timeline)) and not load:
+        return data, rest
+    return Graph(data, **load), rest
+
+
 __all__ = [
-    "Graph", "show", "save", "read_csv", "read_json", "project", "neighborhood", "timeline",
+    "Graph", "show", "save", "explain", "report", "read_csv", "read_json", "read_excel", "project", "neighborhood", "timeline",
     "Timeline", "set_language", "doctor",
     "algorithms", "generators",
     "complete_graph", "path_graph", "cycle_graph", "star_graph", "grid_graph", "random_graph",
     "scale_free_graph", "small_world_graph", "community_graph",
-    "TarecoError", "NodeNotFound", "EdgeNotFound", "NoPath", "NotConnected", "HasCycle",
+    "TarecoError", "NodeNotFound", "EdgeNotFound", "NoPath", "NotConnected", "HasCycle", "GuessWarning",
 ]

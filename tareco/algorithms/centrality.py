@@ -23,7 +23,7 @@ def pagerank(g, alpha=0.85, weight="weight", max_iter=200, tol=1.0e-8):
     n = len(nodes)
     if n == 0:
         return {}
-    wt = _weight_fn(weight)
+    wt = _weight_fn(weight, g)
     out_weight = {u: sum(wt(d) for d in g._succ[u].values()) for u in nodes}
     dangling = [u for u in nodes if out_weight[u] == 0]
     x = dict.fromkeys(nodes, 1.0 / n)
@@ -68,7 +68,7 @@ def betweenness(g, normalized=True, weight=None, k=None, seed=0, engine="auto"):
         if weight is None:
             order, preds, sigma = _bfs_paths(g, s)
         else:
-            order, preds, sigma = _dijkstra_paths(g, s, _weight_fn(weight))
+            order, preds, sigma = _dijkstra_paths(g, s, _weight_fn(weight, g))
         delta = dict.fromkeys(order, 0.0)
         while order:
             w = order.pop()
@@ -103,7 +103,7 @@ def _igraph_betweenness(g, normalized, weight, required):
                       directed=g.directed)
     weights = None
     if weight is not None:
-        wt = _weight_fn(weight)
+        wt = _weight_fn(weight, g)
         weights = [wt(d) for _, _, d in triples]
     raw = ig.betweenness(directed=g.directed, weights=weights)
     n = len(nodes)

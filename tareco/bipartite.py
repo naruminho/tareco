@@ -20,7 +20,7 @@ class ProjectionWarning(UserWarning):
 
 
 def project(data, nodes=None, via=None, method="count", min_shared=1, max_item_size=1000,
-            max_rows=MAX_ROWS):
+            max_rows=MAX_ROWS, attrs=None):
     """Link the values of ``nodes`` that share values of ``via``.
 
     >>> purchases = [("ana", "rice"), ("bia", "rice"), ("bia", "coffee"), ("caio", "coffee")]
@@ -36,11 +36,15 @@ def project(data, nodes=None, via=None, method="count", min_shared=1, max_item_s
                     everybody buys links everybody to everybody, and costs
                     size^2 edges). None keeps them all.
 
+    attrs           more node attributes, like ``Graph(nodes=...)``: a table
+                    (file, DataFrame, rows) keyed by the node.
+
     Other columns that never change for the same node become node attributes;
     numeric columns that change are summed into ``<column>_total``.
     """
     if method not in METHODS:
         raise TarecoError(f"method must be one of {METHODS}")
+    extra_table = attrs
     columns, rows = iter_table(data, max_rows)
     if not columns:
         return Graph()
@@ -97,6 +101,13 @@ def project(data, nodes=None, via=None, method="count", min_shared=1, max_item_s
         g._add_node(node, attrs)
     _link(g, {item: list(members) for item, members in items.items()}, order, per_node, method,
           min_shared, max_item_size)
+    if extra_table is not None:
+        from .io import _add_nodes_from, _resolve
+        extra = Graph()
+        _add_nodes_from(extra, _resolve(extra_table), None)
+        for node, values in extra.nodes.items():
+            if node in g:
+                g.nodes[node].update(values)
     return g
 
 

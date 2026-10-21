@@ -56,7 +56,7 @@ def _search(g, source, weight, target=None):
                     queue.append(v)
         return dist, parent
 
-    wt = _weight_fn(weight)
+    wt = _weight_fn(weight, g)
     done = {}
     tie = count()
     heap = [(0, next(tie), source)]
@@ -123,7 +123,7 @@ def diameter(g):
 
 def _restricted_path(g, source, target, weight, banned_nodes, banned_edges):
     """Shortest path avoiding some nodes and edges; ``None`` when there is none."""
-    wt = _weight_fn(weight)
+    wt = _weight_fn(weight, g)
     dist = {source: 0}
     parent = {source: None}
     tie = count()
@@ -154,7 +154,7 @@ def _restricted_path(g, source, target, weight, banned_nodes, banned_edges):
 def _path_cost(g, path, weight):
     if weight is None:
         return len(path) - 1
-    wt = _weight_fn(weight)
+    wt = _weight_fn(weight, g)
     return sum(wt(g._succ[a][b]) for a, b in zip(path, path[1:]))
 
 

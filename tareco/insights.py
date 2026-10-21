@@ -9,6 +9,7 @@ from .errors import TarecoError
 MIN_GROUP_FOR_TRAITS = 3
 CATEGORY_LIMIT = 30         # more distinct values than this reads as an id, not a category
 NUMERIC_DISTINCT = 12       # integers with more distinct values than this are treated as numbers
+COUNT_PREFIXES = ("n_", "num", "qtd", "quant", "count", "total")  # counts are numbers, not categories
 
 
 class Trait:
@@ -169,7 +170,7 @@ def partition(g, groups=None, lang="en", communities=None):
             if value is not None:
                 buckets.setdefault(str(value), set()).add(n)
         ordered = sorted(buckets.items(), key=lambda kv: -len(kv[1]))
-        return [(label, f"{groups} = {label}", members) for label, members in ordered]
+        return [(label, label, members) for label, members in ordered]
     if isinstance(groups, dict):
         buckets = {}
         for n, label in groups.items():
@@ -199,8 +200,9 @@ def _describe_attributes(g, attrs, skip=()):
         present = [v for v in values if v is not None and not (isinstance(v, float) and v != v)]
         if len(present) < max(3, 0.5 * len(nodes)):
             continue
+        countish = str(name).lower().startswith(COUNT_PREFIXES)
         if all(_is_number(v) for v in present) and (
-                any(isinstance(v, float) for v in present) or len(set(present)) > NUMERIC_DISTINCT):
+                countish or any(isinstance(v, float) for v in present) or len(set(present)) > NUMERIC_DISTINCT):
             ordered = sorted(present)
             mean = sum(ordered) / len(ordered)
             var = sum((v - mean) ** 2 for v in ordered) / len(ordered)
@@ -429,14 +431,40 @@ PATTERN_PRIORITY = ("cycle", "pass_through", "fan_in", "fan_out", "chain", "back
                     "clique", "star")
 
 
+def density(g):
+    from .algorithms.structure import density as d
+    return d(g)
+
+
+def found_weight(g, weight):
+    from .graph import _resolve_weight
+    return _resolve_weight(g, weight)
+
+
 def _pattern_findings(g, lang, label, weight, per_kind=2, total=6):
     from .patterns import find_patterns
     found = find_patterns(g, lang=lang, limit=per_kind, weight=weight, label=label)
+    weights = sorted(d.get(found_weight(g, weight), 0) for _, _, d in g._edge_triples()
+                     if isinstance(d.get(found_weight(g, weight)), (int, float)))
+    typical = weights[len(weights) // 2] if weights else 0
+    dense = density(g) >= 0.15  # in dense networks cliques are everywhere and say little
     out = []
     for kind in PATTERN_PRIORITY:
-        for p in found.of(kind):
+        same = found.of(kind)
+        if kind == "clique":
+            kept = []
+            for p in ([] if dense else same):
+                if all(len(set(p.nodes) & set(q.nodes)) <= 0.5 * len(p.nodes) for q in kept):
+                    kept.append(p)
+            same = kept
+        if kind == "back_and_forth" and typical:
+            same = [p for p in same if p.score >= 5 * typical]  # small change going back and forth is everyday
+        best = same[0].score if same else 0
+        for p in same:
             if kind == "clique" and len(p.nodes) < 5:
                 continue  # small cliques are everywhere in social data
+            if best and p.score < 0.25 * best:
+                continue  # a summary keeps the ones that stand out; patterns() has them all
             out.append(Finding(kind, p.text, p.nodes))
     return out[:total]
 
@@ -485,6 +513,8 @@ def _reciprocity(g, lang):
 
 
 def _weights(g, weight, lang, name):
+    from .graph import _resolve_weight
+    weight = _resolve_weight(g, weight)
     if not weight:
         return []
     weighted = [(d[weight], u, v) for u, v, d in g._edge_triples()
@@ -499,7 +529,7 @@ def _weights(g, weight, lang, name):
         share = sum(w for w, _, _ in top) / total
     if len(weighted) >= 10 and share >= 0.3:  # evenly spread weights are not worth a line
         out.append(Finding("concentration", i18n.text(lang, "concentration", pct=i18n.percent(share, lang),
-                                                      weight=weight),
+                                                      weight=i18n.metric_name(weight, lang)),
                            list(dict.fromkeys(x for _, u, v in top for x in (u, v)))))
     w, u, v = weighted[0]
     out.append(Finding("strongest", i18n.text(lang, "strongest", a=name(u), b=name(v), w=i18n.number(w, lang)),

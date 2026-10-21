@@ -30,7 +30,7 @@ def max_flow(g, source, target, capacity="weight"):
     g._check(target)
     if source == target:
         raise TarecoError("source and target must be different nodes")
-    cap_of = _weight_fn(capacity)
+    cap_of = _weight_fn(capacity, g)
     nodes = list(g)
     index = {n: i for i, n in enumerate(nodes)}
     head = [[] for _ in nodes]
