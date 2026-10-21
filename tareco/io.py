@@ -122,20 +122,29 @@ def _infer_directed(data):
     return False
 
 
+def _has(obj, *names):
+    """Real attributes only. Spark Connect DataFrames answer *any* attribute with a
+    Column (``df.is_directed`` is a column named "is_directed"), so plain
+    ``hasattr`` would mistake them for anything."""
+    own = getattr(obj, "__dict__", {})
+    kind = dir(type(obj))
+    return all(name in kind or name in own for name in names)
+
+
 def _is_networkx(obj):
-    return hasattr(obj, "is_directed") and hasattr(obj, "adj") and hasattr(obj, "nodes")
+    return _has(obj, "is_directed", "adj", "nodes")
 
 
 def _is_dataframe(obj):
-    return hasattr(obj, "columns") and hasattr(obj, "to_dict") and hasattr(obj, "iloc")
+    return _has(obj, "columns", "to_dict", "iloc")
 
 
 def _is_spark(obj):
-    return hasattr(obj, "toLocalIterator") and hasattr(obj, "schema") and hasattr(obj, "columns")
+    return _has(obj, "toLocalIterator", "schema", "columns")
 
 
 def _is_polars(obj):
-    return hasattr(obj, "iter_rows") and hasattr(obj, "columns") and hasattr(obj, "schema")
+    return _has(obj, "iter_rows", "columns", "schema")
 
 
 def _tabular(obj, max_rows):

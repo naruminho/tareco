@@ -147,3 +147,21 @@ def test_real_spark_doctor(spark):
     report = tc.doctor(spark, quick=True)
     assert report.ok, repr(report)
     assert next(c for c in report if c.name == "spark: flavor").detail.startswith("classic Spark")
+
+
+class ConnectLikeDataFrame(FakeSparkDataFrame):
+    """Spark Connect answers any unknown attribute with a Column object."""
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return ("Column", name)
+
+
+def test_spark_connect_dataframes_are_not_mistaken_for_other_things():
+    rows = [Row(origem="a", destino="b"), Row(origem="b", destino="c")]
+    df = ConnectLikeDataFrame(rows)
+    assert hasattr(df, "is_directed") and hasattr(df, "iter_rows")  # the trap
+    g = tc.Graph(df)  # must not treat it as a networkx graph or a polars frame
+    assert not g.directed and g.edge_count == 2
+    assert tc.project(ConnectLikeDataFrame([Row(p="x", i=1), Row(p="y", i=1)])).has_edge("x", "y")
