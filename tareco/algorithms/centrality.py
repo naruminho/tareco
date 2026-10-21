@@ -1,0 +1,133 @@
+from collections import deque
+from heapq import heappop, heappush
+from itertools import count
+
+from ..graph import _weight_fn
+from .paths import _search
+
+
+def degree_centrality(g):
+    """Fraction of the other nodes each node is connected to."""
+    n = len(g)
+    if n <= 1:
+        return {u: 1.0 for u in g}
+    scale = 1.0 / (n - 1)
+    return {u: d * scale for u, d in g.degree().items()}
+
+
+def pagerank(g, alpha=0.85, weight="weight", max_iter=200, tol=1.0e-8):
+    """Importance of each node by the random-surfer model. Values sum to 1."""
+    nodes = list(g)
+    n = len(nodes)
+    if n == 0:
+        return {}
+    wt = _weight_fn(weight)
+    out_weight = {u: sum(wt(d) for d in g._succ[u].values()) for u in nodes}
+    dangling = [u for u in nodes if out_weight[u] == 0]
+    x = dict.fromkeys(nodes, 1.0 / n)
+    for _ in range(max_iter):
+        last = x
+        base = (1.0 - alpha) / n + alpha * sum(last[u] for u in dangling) / n
+        x = dict.fromkeys(nodes, base)
+        for u in nodes:
+            ow = out_weight[u]
+            if ow:
+                share = alpha * last[u] / ow
+                for v, d in g._succ[u].items():
+                    x[v] += share * wt(d)
+        if sum(abs(x[u] - last[u]) for u in nodes) < n * tol:
+            break
+    return x
+
+
+def betweenness(g, normalized=True, weight=None):
+    """How often each node sits on shortest paths between other nodes (Brandes)."""
+    bc = dict.fromkeys(g, 0.0)
+    for s in g:
+        if weight is None:
+            order, preds, sigma = _bfs_paths(g, s)
+        else:
+            order, preds, sigma = _dijkstra_paths(g, s, _weight_fn(weight))
+        delta = dict.fromkeys(order, 0.0)
+        while order:
+            w = order.pop()
+            for v in preds[w]:
+                delta[v] += sigma[v] / sigma[w] * (1.0 + delta[w])
+            if w != s:
+                bc[w] += delta[w]
+    n = len(g)
+    if normalized:
+        scale = 1.0 / ((n - 1) * (n - 2)) if n > 2 else None
+    else:
+        scale = None if g.directed else 0.5
+    if scale is not None:
+        for v in bc:
+            bc[v] *= scale
+    return bc
+
+
+def _bfs_paths(g, s):
+    order = []
+    preds = {s: []}
+    sigma = {s: 1.0}
+    dist = {s: 0}
+    queue = deque([s])
+    while queue:
+        v = queue.popleft()
+        order.append(v)
+        for w in g._succ[v]:
+            if w not in dist:
+                dist[w] = dist[v] + 1
+                sigma[w] = 0.0
+                preds[w] = []
+                queue.append(w)
+            if dist[w] == dist[v] + 1:
+                sigma[w] += sigma[v]
+                preds[w].append(v)
+    return order, preds, sigma
+
+
+def _dijkstra_paths(g, s, wt):
+    order = []
+    preds = {s: []}
+    sigma = {s: 1.0}
+    done = {}
+    seen = {s: 0}
+    tie = count()
+    heap = [(0, next(tie), s, s)]
+    while heap:
+        d, _, pred, v = heappop(heap)
+        if v in done:
+            continue
+        if v != s:
+            sigma[v] += sigma[pred]
+        order.append(v)
+        done[v] = d
+        for w, attrs in g._succ[v].items():
+            nd = d + wt(attrs)
+            if w in done:
+                continue
+            if w not in seen or nd < seen[w]:
+                seen[w] = nd
+                heappush(heap, (nd, next(tie), v, w))
+                sigma[w] = 0.0
+                preds[w] = [v]
+            elif nd == seen[w]:
+                sigma[w] += sigma[v]
+                preds[w].append(v)
+    return order, preds, sigma
+
+
+def closeness(g, weight=None):
+    """How near each node is to the nodes it can reach (Wasserman-Faust scaling)."""
+    n = len(g)
+    result = {}
+    for u in g:
+        dist, _ = _search(g, u, weight)
+        total = sum(dist.values())
+        reach = len(dist) - 1
+        if total > 0 and n > 1:
+            result[u] = (reach / total) * (reach / (n - 1))
+        else:
+            result[u] = 0.0
+    return result

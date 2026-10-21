@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tareco"
+version = "1.0.0"
+description = "Graphs made simple: zero-dependency graph algorithms and beautiful interactive views"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE", "LICENSE-force-graph"]
+authors = [{ name = "Narumi Abe", email = "mail.narumi@gmail.com" }]
+keywords = ["graph", "network", "visualization", "pagerank", "community detection", "force-directed"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/naruminho/tareco"
+
+[project.scripts]
+tareco = "tareco.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["tareco*"]
+
+[tool.setuptools.package-data]
+"tareco.viz" = ["*.html", "*.css", "*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
