@@ -1,0 +1,45 @@
+name: publish
+
+# Publishes to PyPI when a GitHub release is published (tag vX.Y.Z).
+# Uses PyPI trusted publishing: no API token is stored anywhere.
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install build twine pytest
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - name: Tag matches package version
+        run: |
+          pip install dist/*.whl
+          version=$(python -c "import tareco; print(tareco.__version__)")
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != version $version"; exit 1; }
+      - run: pytest
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/tareco/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
