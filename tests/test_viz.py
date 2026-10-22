@@ -165,3 +165,18 @@ def test_node_notes_and_finding_rows_reach_the_page():
     webgl = payload_from_html(to_html(g, renderer="webgl", lang="en"))
     i = webgl["nodes"]["label"].index("p")
     assert any("just under 10,000" in t for t in webgl["nodes"]["notes"][str(i)])
+
+
+def test_work_list_reaches_the_page():
+    rows = [{"tid": f"T{k}", "from": "p", "to": f"q{k % 2}", "amount": 9500 + k, "date": f"2026-01-0{k + 1}"}
+            for k in range(6)]
+    rows += [{"tid": f"S{k}", "from": f"c{k}", "to": f"shop{k % 3}", "amount": 20 + k, "date": "2026-01-02"}
+             for k in range(30)]
+    g = tc.Graph(rows, directed=True, keep=True)
+    data = build_payload(g, lang="en")
+    first = data["config"]["review"][0]
+    assert data["nodes"][first["node"]]["label"] == "p" and first["rows"] == 6
+    assert any("just under 10,000" in t for t in first["reasons"])
+    report = g.report(lang="en")
+    assert "<h2>Worth a look</h2>" in report and "T0, T1, T2" in report
+    assert "<h2>Worth a look</h2>" not in tc.path_graph(4).report(lang="en")

@@ -173,7 +173,7 @@ def _id_column(rows):
     return None
 
 
-def review(g, watch=None, limit=None, within="7 days", top=50, lang=None, label=None):
+def review(g, watch=None, limit=None, within="7 days", top=50, lang=None, label=None, found=None):
     """Every node something stands out about, ranked, with its reasons and the rows behind them.
 
     watch   a list to check closeness to (flagged nodes, known cases), as in ``near``.
@@ -187,7 +187,8 @@ def review(g, watch=None, limit=None, within="7 days", top=50, lang=None, label=
     ``to_spark(spark)`` turn it into a table to work from.
     """
     T = _Text(g, lang, label)
-    found = signals(g, watch=watch, limit=limit, within=within, lang=T.lang, label=label)
+    if found is None:
+        found = signals(g, watch=watch, limit=limit, within=within, lang=T.lang, label=label)
     kept = [e[3] for e in g._events[:200]] if g.attrs.get("kept") else []
     id_column = _id_column(kept)
     items = []

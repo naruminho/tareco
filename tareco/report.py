@@ -26,6 +26,8 @@ th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; t
 td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .scroll { overflow-x: auto; }
+ul.why { margin: 0; padding-left: 18px; }
+ul.why li { margin: 2px 0; }
 .tareco-graph iframe { border: 1px solid var(--border) !important; display: block; }
 """
 
@@ -35,13 +37,15 @@ HEADINGS = {
            "group": "Group", "size": "Nodes", "share": "Share", "traits": "What sets it apart",
            "members": "Key members", "inward": "Inside", "node": "Node", "importance": "Importance",
            "connections": "Connections", "period": "Period", "active": "Active nodes",
-           "weight": "Weight", "lead": "{n} nodes and {m} connections"},
+           "weight": "Weight", "lead": "{n} nodes and {m} connections", "review": "Worth a look",
+           "score": "Score", "why": "Why", "rows": "Rows behind it", "more": "and {k} more"},
     "pt": {"findings": "O que esta rede mostra", "groups": "Grupos", "top": "Nós mais importantes",
            "patterns": "Padrões", "activity": "Atividade ao longo do tempo", "graph": "Explore a rede",
            "group": "Grupo", "size": "Nós", "share": "Parcela", "traits": "O que o distingue",
            "members": "Principais membros", "inward": "Dentro", "node": "Nó", "importance": "Importância",
            "connections": "Conexões", "period": "Período", "active": "Nós ativos",
-           "weight": "Peso", "lead": "{n} nós e {m} conexões"},
+           "weight": "Peso", "lead": "{n} nós e {m} conexões", "review": "Vale um olhar",
+           "score": "Pontos", "why": "Por quê", "rows": "Linhas por trás", "more": "e mais {k}"},
 }
 
 
@@ -60,6 +64,20 @@ def report(g, path=None, title=None, lang=None, label=None, timeline=None, heigh
              f'<p class="lead">{_e(H["lead"].format(n=num(len(g)), m=num(g.edge_count)))}</p>',
              f'<h2>{_e(H["findings"])}</h2><div class="card"><ul class="findings">'
              + "".join(f"<li>{_e(f.text)}</li>" for f in exp.findings) + "</ul></div>"]
+
+    work = g.review(lang=lang, label=label, top=30) if g.edge_count else []
+    if work:
+        def ids(r):
+            shown = ", ".join(map(str, r.ids[:12]))
+            return shown + (" " + H["more"].format(k=num(len(r.ids) - 12)) if len(r.ids) > 12 else "")
+        rows = "".join(
+            f"<tr><td class='num'>{k}</td><td>{_e(_name(g, r.node, label))}</td><td class='num'>{num(r.score)}</td>"
+            f"<td><ul class='why'>{''.join(f'<li>{_e(t)}</li>' for t in r.reasons)}</ul></td>"
+            f"<td>{_e(ids(r)) if r.ids else num(len(r.rows)) if r.rows else ''}</td></tr>"
+            for k, r in enumerate(work, 1))
+        parts.append(f'<h2>{_e(H["review"])}</h2><div class="card scroll"><table><tr><th></th>'
+                     f'<th>{_e(H["node"])}</th><th>{_e(H["score"])}</th><th>{_e(H["why"])}</th>'
+                     f'<th>{_e(H["rows"])}</th></tr>{rows}</table></div>')
 
     profiles = [p for p in exp.profiles if p.size >= 2]
     if profiles:

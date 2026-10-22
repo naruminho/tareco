@@ -351,7 +351,8 @@ def build_payload(g, nodes=None, triples=None, metric=None, color=None, size=Non
     metric = metric or _metric_cache(g)
     color, size = _defaults(g, color, size)
     colors, groups, legend = _colors(g, nodes, color, metric)
-    lang, findings, notes, _, node_notes = _insights(g, nodes, metric, legend, color, lang, label, insights)
+    lang, findings, notes, _, node_notes, work = _insights(g, nodes, metric, legend, color, lang, label,
+                                                           insights)
     sizes = _sizes(g, nodes, size, metric)
     shown = _shown_metrics(g, color, size, metric)
     edge_width = _edge_width_attr(g, edge_width, triples)
@@ -389,7 +390,7 @@ def build_payload(g, nodes=None, triples=None, metric=None, color=None, size=Non
     return {
         "config": _localize(_config(g, nodes, triples, title, theme, legend, size, renderer="canvas",
                                     dim=dim, particles=bool(particles), lang=lang, insights=findings,
-                                    time=time, linkKinds=link_kinds),
+                                    time=time, linkKinds=link_kinds, review=work),
                             lang),
         "nodes": out_nodes,
         "links": out_links,
@@ -424,8 +425,8 @@ def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, si
     colors, cats, legend = _colors(g, nodes, color, metric)
     sizes = _sizes(g, nodes, size, metric)
     shown = _shown_metrics(g, color, size, metric)
-    lang, findings, notes, community_notes, node_notes = _insights(g, nodes, metric, legend, color, lang,
-                                                                   label, insights)
+    lang, findings, notes, community_notes, node_notes, work = _insights(g, nodes, metric, legend, color,
+                                                                         lang, label, insights)
     group_of, groups, group_title = _overview_groups(g, color, legend, metric, lang)
     group_notes = notes if legend and legend["kind"] == "category" else community_notes
     index = {n: i for i, n in enumerate(nodes)}
@@ -460,7 +461,8 @@ def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, si
                           groupTitle=group_title, lang=lang, insights=findings, time=time,
                           start="overview" if (len(nodes) > OVERVIEW_START[0]
                                                or len(plain) > OVERVIEW_START[1]) else "nodes",
-                          groupName=i18n.metric_name(group_title, lang), linkKinds=link_kinds), lang),
+                          groupName=i18n.metric_name(group_title, lang), linkKinds=link_kinds,
+                          review=work), lang),
         "nodes": {
             "label": [_label(n, g.nodes[n], label) for n in nodes],
             "colors": palette,
@@ -500,22 +502,28 @@ def _rows_payload(rows):
     return {"rows": [dict(r) for r in rows[:ROWS_SHOWN]], "rowCount": len(rows)}
 
 
-def _node_notes(g, lang, label):
-    """``{node: [lines]}``: what stands out about each node, for its card in the view."""
-    from ..review import WEIGHTS, ReviewItem, signals
+REVIEW_SHOWN = 30   # nodes in the view's work list
+
+
+def _node_notes(g, lang, label, index):
+    """``({node: [lines]}, work list)``: what stands out about each node, and the nodes ranked."""
+    from ..review import WEIGHTS, ReviewItem, review, signals
     try:
         found = signals(g, lang=lang, label=label)
     except TarecoError:
-        return {}
-    return {n: ReviewItem(n, 0, sorted(s, key=lambda x: -WEIGHTS.get(x.kind, 1.0)), [], [], lang).reasons
-            for n, s in found.items()}
+        return {}, []
+    notes = {n: ReviewItem(n, 0, sorted(s, key=lambda x: -WEIGHTS.get(x.kind, 1.0)), [], [], lang).reasons
+             for n, s in found.items()}
+    work = [{"node": index[r.node], "score": r.score, "reasons": r.reasons[:3], "rows": len(r.rows)}
+            for r in review(g, lang=lang, label=label, top=REVIEW_SHOWN, found=found) if r.node in index]
+    return notes, work
 
 
 def _insights(g, nodes, metric, legend, color, lang, label, enabled):
-    """``(lang, findings, legend notes, community notes, node notes)`` for the view."""
+    """``(lang, findings, legend notes, community notes, node notes, work list)`` for the view."""
     lang = i18n.get_language(lang)
     if enabled is False or enabled is None or not len(g):
-        return lang, [], {}, {}, {}
+        return lang, [], {}, {}, {}, []
     from ..insights import Explanation, explain, profile
     communities = None
     rank = None
@@ -534,7 +542,7 @@ def _insights(g, nodes, metric, legend, color, lang, label, enabled):
     findings = [{"kind": f.kind, "text": f.text, "group": f.group, "period": f.period,
                  "nodes": [index[x] for x in f.nodes if x in index][:2000], **_rows_payload(getattr(f, "rows", None))}
                 for f in exp.findings]
-    node_notes = _node_notes(g, lang, label) if g.edge_count else {}
+    node_notes, work = _node_notes(g, lang, label, index) if g.edge_count else ({}, [])
     community_notes = {p.label: p.traits[0].short(lang) for p in exp.profiles if p.traits}
     notes = {}
     if legend and legend["kind"] == "category":
@@ -546,7 +554,7 @@ def _insights(g, nodes, metric, legend, color, lang, label, enabled):
         for item in legend["items"]:
             if not item.get("missing") and item["label"] in notes:
                 item["note"] = notes[item["label"]]
-    return lang, findings, notes, community_notes, node_notes
+    return lang, findings, notes, community_notes, node_notes, work
 
 
 def _localize(config, lang):

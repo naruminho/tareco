@@ -260,3 +260,23 @@ def test_node_card_and_rows_behind_a_finding(browser, tmp_path, renderer):
         assert "T0" in p.text(".rows-box") and "Rows behind it" in p.text(".rows-box")
     finally:
         p.close()
+
+
+@pytest.mark.parametrize("renderer", ["canvas", "webgl"])
+def test_work_list_in_the_page(browser, tmp_path, renderer):
+    rows = [{"tid": f"T{k}", "from": "p", "to": f"q{k % 2}", "amount": 9500 + k, "date": f"2026-01-0{k + 1}"}
+            for k in range(6)]
+    rows += [{"tid": f"S{k}", "from": f"c{k}", "to": f"shop{k % 3}", "amount": 20 + k, "date": "2026-01-02"}
+             for k in range(30)]
+    p = Page(browser, tc.Graph(rows, directed=True, keep=True).to_html(renderer=renderer, lang="en"), tmp_path)
+    try:
+        p.settle(800)
+        assert p.visible("#btn-review")
+        p.app.click("#btn-review")
+        p.settle()
+        assert p.text("#panel-title") == "Worth a look"
+        p.app.click(".review-item >> nth=0")
+        p.settle()
+        assert p.text("#panel-title") == "p" and "What stands out" in p.text("#panel-body")
+    finally:
+        p.close()

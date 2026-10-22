@@ -216,6 +216,16 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .legend-item .count { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
 .legend-item.off { opacity: 0.4; }
 .notes { margin: 0 0 4px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.review { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.review-item { display: flex; gap: 10px; align-items: flex-start; text-align: left; width: 100%; padding: 9px 10px;
+  border: 1px solid var(--border, rgba(127,127,127,.25)); border-radius: 10px; background: transparent; color: inherit;
+  font: inherit; cursor: pointer; height: auto; min-height: 0; white-space: normal; flex: none; }
+.review-item:hover { background: var(--hover); }
+.review-item .rank { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 16px; }
+.review-item .body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.review-item .who { display: flex; align-items: center; gap: 6px; }
+.review-item .who .muted { margin-left: auto; font-size: 12px; }
+.review-item .why { font-size: 12.5px; line-height: 1.35; color: var(--muted); }
 .notes li { line-height: 1.35; }
 .rows-box { margin: 2px 0 6px; }
 .rows-scroll { overflow-x: auto; max-height: 260px; overflow-y: auto; border: 1px solid var(--border, rgba(127,127,127,.25)); border-radius: 8px; }

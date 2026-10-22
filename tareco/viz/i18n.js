@@ -37,6 +37,8 @@ function tarecoText(lang) {
       pause: "Pause",
       linkKinds: "Links",
       standsOut: "What stands out",
+      review: "Worth a look",
+      score: "score",
       rowsTitle: "Rows behind it",
       moreRows: (k) => `+${k} more rows`,
     },
@@ -75,6 +77,8 @@ function tarecoText(lang) {
       pause: "Pausar",
       linkKinds: "Liga\u00e7\u00f5es",
       standsOut: "O que chama aten\u00e7\u00e3o",
+      review: "Vale um olhar",
+      score: "pontos",
       rowsTitle: "Linhas por tr\u00e1s",
       moreRows: (k) => `+${k} linhas`,
     },
@@ -92,6 +96,7 @@ function tarecoText(lang) {
   tip("btn-path", T.path);
   tip("btn-groups", T.groups);
   tip("btn-insights", T.insights);
+  tip("btn-review", T.review);
   tip("btn-theme", T.theme);
   tip("btn-png", T.save);
   tip("btn-pin", T.pin);
@@ -105,6 +110,16 @@ function tarecoText(lang) {
 }
 
 /* The insights list in the side panel: plain-language findings, each one clickable when it is about nodes. */
+/* The work list: nodes worth a look, the strongest first, each with its first reasons. */
+function tarecoReviewHtml(items, label, color, esc, fmt, T) {
+  "use strict";
+  return `<div class="review">${items.map((r, k) =>
+    `<button class="review-item" data-id="${r.node}"><span class="rank">${k + 1}</span>` +
+    `<span class="body"><span class="who"><span class="dot" style="background:${color(r.node)}"></span>` +
+    `<b>${esc(label(r.node))}</b><span class="muted">${T.score} ${fmt(r.score)}</span></span>` +
+    `${r.reasons.map((t) => `<span class="why">${esc(t)}</span>`).join("")}</span></button>`).join("")}</div>`;
+}
+
 /* What stands out about a node, one line per kind of signal. */
 function tarecoNotesHtml(notes, esc) {
   "use strict";

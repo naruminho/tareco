@@ -469,6 +469,24 @@
   });
   $("btn-insights").hidden = insights.length === 0;
   $("btn-insights").onclick = showInsights;
+  // the work list: nodes worth a look, the strongest first
+  const work = cfg.review || [];
+  function showReview() {
+    state.selected = null;
+    state.path = null;
+    $("panel-dot").hidden = true;
+    $("panel-title").textContent = T.review;
+    $("btn-pin").hidden = true;
+    $("panel-body").innerHTML = tarecoReviewHtml(work, (i) => byId.get(i).label, (i) => byId.get(i).color, esc, fmt, T);
+    $("panel").hidden = false;
+    update();
+  }
+  $("btn-review").hidden = work.length === 0;
+  $("btn-review").onclick = showReview;
+  $("panel-body").addEventListener("click", (e) => {
+    const b = e.target.closest(".review-item");
+    if (b) select(byId.get(Number(b.dataset.id)));
+  });
   $("btn-close").onclick = clearAll;
   $("btn-pin").onclick = () => { if (state.selected) setPinned(state.selected, !state.selected.pinned); };
 
