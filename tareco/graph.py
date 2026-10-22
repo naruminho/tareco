@@ -791,9 +791,30 @@ class Graph:
         show(self, **options)
 
     def save(self, path, **options):
-        """Write the interactive view to a standalone HTML file."""
+        """Write the interactive view to a standalone HTML file, or a picture for ``.svg``/``.png``.
+
+        Pictures are drawn in Python, for slides and e-mails: ``color``, ``size``,
+        ``label``, ``title``, ``width``, ``height``, ``theme`` ("light", "dark"),
+        ``labels`` (how many names to write) and ``max_nodes``. PNG needs Pillow.
+        """
+        import os
+        ext = os.path.splitext(str(path))[1].lower()
+        if ext == ".svg":
+            from .picture import to_svg
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(to_svg(self, **options))
+            return os.path.abspath(path)
+        if ext == ".png":
+            from .picture import to_png
+            to_png(self, path, **options)
+            return os.path.abspath(path)
         from .viz import save
         return save(self, path, **options)
+
+    def to_svg(self, **options):
+        """A still picture of the graph as SVG text (see ``save``)."""
+        from .picture import to_svg
+        return to_svg(self, **options)
 
     def report(self, path=None, title=None, lang=None, label=None, **view):
         """A single HTML file with the findings, group and node tables, and the graph.
