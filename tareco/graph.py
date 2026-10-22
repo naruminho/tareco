@@ -831,14 +831,23 @@ class Graph:
         show(self, **options)
 
     def save(self, path, **options):
-        """Write the interactive view to a standalone HTML file, or a picture for ``.svg``/``.png``.
+        """Write the interactive view to a standalone HTML file, a picture for ``.svg``/``.png``,
+        or the whole graph for ``.tareco``.
 
         Pictures are drawn in Python, for slides and e-mails: ``color``, ``size``,
         ``label``, ``title``, ``width``, ``height``, ``theme`` ("light", "dark"),
         ``labels`` (how many names to write) and ``max_nodes``. PNG needs Pillow.
+
+        A ``.tareco`` file keeps everything, the rows behind the links included,
+        to pick the investigation up later with ``tareco.load(path)``.
         """
         import os
         ext = os.path.splitext(str(path))[1].lower()
+        if ext == ".tareco":
+            if options:
+                raise TarecoError(f"a .tareco file keeps the whole graph; {sorted(options)} do not apply")
+            from .case import save
+            return save(self, path)
         if ext == ".svg":
             from .picture import to_svg
             with open(path, "w", encoding="utf-8") as f:

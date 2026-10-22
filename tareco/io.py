@@ -37,6 +37,12 @@ ROLE_WORDS = set(SOURCE_COLUMNS) | set(TARGET_COLUMNS) | {
 
 def load_into(g, data, *, directed=None, nodes=None, source=None, target=None, node_id=None,
               max_rows=MAX_ROWS, **table):
+    if isinstance(data, (str, os.PathLike)) and os.fspath(data).lower().endswith(".tareco"):
+        from .case import restore
+        restore(g, data)
+        if nodes is not None:
+            _add_nodes_from(g, _resolve(nodes), node_id, max_rows)
+        return
     data = _resolve(data)
     statement = table.get("account") is not None or table.get("counterparty") is not None
     asked = directed

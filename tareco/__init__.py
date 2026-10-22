@@ -16,6 +16,9 @@ g.patterns(), g.communities(), g.pagerank(), g.shortest_path(a, b), and
 tareco.timeline(...), tareco.project(...), tareco.neighborhood(...) for time,
 two-sided tables and huge tables. tareco.doctor() checks your environment.
 
+An investigation keeps: g.save("case.tareco") writes the graph with the rows behind
+it, and tareco.load("case.tareco") picks it up again.
+
 Money flows: Graph(statements, account=..., counterparty=..., keep=True) reads
 bank statements; g.add_links(...) adds other kinds of links (devices, addresses);
 g.splits(), g.unusual_amounts(), g.misfits(), g.near(), g.flows(), g.why(node) and
@@ -38,6 +41,7 @@ from .io import DataWarning, GuessWarning, read_csv, read_json
 from .quality import check
 from .tracing import records
 from .compare import compare
+from .case import load
 
 __version__ = "1.5.0"
 
@@ -92,7 +96,7 @@ def _graph(data, options):
 
 __all__ = [
     "Graph", "show", "save", "explain", "report", "read_csv", "read_json", "read_excel", "project", "neighborhood",
-    "timeline", "records", "compare",
+    "timeline", "records", "compare", "load",
     "Timeline", "set_language", "doctor",
     "algorithms", "big", "generators",
     "complete_graph", "path_graph", "cycle_graph", "star_graph", "grid_graph", "random_graph",

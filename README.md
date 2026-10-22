@@ -303,6 +303,12 @@ tareco.records(spark.table("statements"), g.similar_to("a017").nodes, columns=["
 `tareco.records` looks up any list of ids in the original table and returns it
 in the table's own format; on Spark the filter runs in the cluster.
 
+**Pick it up later.** `g.save("case.tareco")` writes the whole graph to one file:
+nodes, links, the rows kept behind them, the kinds of link and node, and the id
+prefixes. `tareco.load("case.tareco")` (or `tareco.Graph("case.tareco")`) gives it
+back as it was, dates still dates, so the next session starts where this one
+stopped. The file is gzip-compressed JSON.
+
 ## The view
 
 - **Hover** a node to light up its neighborhood; **click** it for a side panel
@@ -515,6 +521,7 @@ tareco.path_graph(5), tareco.cycle_graph(5)
 ```python
 g.to_csv("edges.csv", "nodes.csv")    tareco.read_csv("edges.csv", "nodes.csv")
 g.to_json("graph.json")               tareco.read_json("graph.json")
+g.save("case.tareco")                 tareco.load("case.tareco")
                                       tareco.read_excel("book.xlsx", sheet="sales")
 nodes_df, edges_df = g.to_pandas()    tareco.Graph(df, nodes=nodes_df)
 g.to_networkx()                       tareco.Graph(nx_graph)
