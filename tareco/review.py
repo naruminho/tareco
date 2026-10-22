@@ -26,6 +26,11 @@ class Signal:
 
 def signals(g, watch=None, limit=None, within="7 days", lang=None, label=None):
     """``{node: [Signal, ...]}``: every pattern and behavior found, attached to the nodes it is about."""
+    key = ("signals", tuple(watch) if isinstance(watch, (list, tuple)) else watch, limit, str(within), lang, label)
+    return g._cached(key, lambda: _signals(g, watch, limit, within, lang, label))
+
+
+def _signals(g, watch, limit, within, lang, label):
     from .investigate import _exclusive
     found = {}
 

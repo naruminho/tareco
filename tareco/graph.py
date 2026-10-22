@@ -134,6 +134,37 @@ class Graph:
         self._pred = {} if directed else self._succ
         self._edge_count = 0
         self._events = []  # (u, v, kind, row): the rows behind the links, when kept
+        self._memo = None  # results shared inside one explain(), review(), view...
+
+    def _memoized(self):
+        """While inside, heavy results (PageRank, groups, patterns, the kept rows) are worked
+        out once and shared; they are dropped on the way out, so they never go stale."""
+        import gc
+        from contextlib import contextmanager
+
+        @contextmanager
+        def scope():
+            if self._memo is not None:
+                yield
+                return
+            self._memo = {}
+            collecting = gc.isenabled()
+            gc.disable()  # millions of objects stay alive in here; the collector would walk them over and over
+            try:
+                yield
+            finally:
+                self._memo = None
+                if collecting:
+                    gc.enable()
+        return scope()
+
+    def _cached(self, key, compute):
+        memo = getattr(self, "_memo", None)
+        if memo is None:
+            return compute()
+        if key not in memo:
+            memo[key] = compute()
+        return memo[key]
 
     def _make_directed(self):
         """Turn an undirected graph without links into a directed one, keeping its nodes."""
@@ -527,7 +558,8 @@ class Graph:
 
     def pagerank(self, alpha=0.85, weight="weight"):
         from .algorithms.centrality import pagerank
-        return pagerank(self, alpha=alpha, weight=weight)
+        found = self._cached(("pagerank", alpha, weight), lambda: pagerank(self, alpha=alpha, weight=weight))
+        return dict(found)
 
     def betweenness(self, normalized=True, weight=None, k=None, seed=0, engine="auto"):
         """Bridge score of each node. Pass ``k`` (e.g. 500) to estimate it fast on big graphs."""
@@ -555,7 +587,9 @@ class Graph:
     def communities(self, weight="weight", resolution=1.0, seed=0):
         """Groups of densely connected nodes (Louvain), biggest first."""
         from .algorithms.community import louvain
-        return louvain(self, weight=weight, resolution=resolution, seed=seed)
+        found = self._cached(("communities", weight, resolution, seed),
+                             lambda: louvain(self, weight=weight, resolution=resolution, seed=seed))
+        return [set(c) for c in found]
 
     def modularity(self, communities, weight="weight", resolution=1.0):
         from .algorithms.community import modularity
@@ -644,7 +678,8 @@ class Graph:
         between groups, hubs, one-way flows and where the weight concentrates.
         """
         from .insights import explain
-        return explain(self, groups=groups, lang=lang, top=top, label=label, weight=weight)
+        with self._memoized():
+            return explain(self, groups=groups, lang=lang, top=top, label=label, weight=weight)
 
     def profile(self, groups=None, attrs=None, top=3, lang=None, label=None):
         """What characterizes each group (communities by default) compared with the whole network."""
@@ -757,7 +792,8 @@ class Graph:
         unusual amounts, what it shares with others and, with ``watch``, how close
         it is to a list you give."""
         from .investigate import why
-        return why(self, node, watch=watch, lang=lang, label=label)
+        with self._memoized():
+            return why(self, node, watch=watch, lang=lang, label=label)
 
     def review(self, watch=None, limit=None, within="7 days", top=50, lang=None, label=None):
         """Every node something stands out about, ranked, with its reasons and the rows behind them.
@@ -765,7 +801,8 @@ class Graph:
         >>> g.review(watch=["a017"]).to_pandas()     # a work list for whoever investigates
         """
         from .review import review
-        return review(self, watch=watch, limit=limit, within=within, top=top, lang=lang, label=label)
+        with self._memoized():
+            return review(self, watch=watch, limit=limit, within=within, top=top, lang=lang, label=label)
 
     def similar_to(self, nodes, n=10, lang=None, label=None):
         """The nodes that behave most like ``nodes`` (one or a few known cases), with the reasons.
@@ -773,7 +810,8 @@ class Graph:
         >>> g.similar_to("a017").nodes        # ids to look up in your own tables
         """
         from .investigate import similar_to
-        return similar_to(self, nodes, n=n, lang=lang, label=label)
+        with self._memoized():
+            return similar_to(self, nodes, n=n, lang=lang, label=label)
 
     def compare(self, after, lang=None, label=None, top=3):
         """What changed from this graph to ``after`` (another month, region, version), in words."""
@@ -824,7 +862,8 @@ class Graph:
         Made to be sent to someone. Returns the path, or the HTML when ``path`` is None.
         """
         from .report import report
-        return report(self, path, title=title, lang=lang, label=label, **view)
+        with self._memoized():
+            return report(self, path, title=title, lang=lang, label=label, **view)
 
     def to_html(self, **options):
         from .viz import to_html

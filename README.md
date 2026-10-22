@@ -420,6 +420,10 @@ Tens of thousands of nodes are fine. The view changes strategy as the graph grow
 - **Trimming:** past `max_nodes` (50,000) or `max_edges` (200,000), only the
   most important nodes (by PageRank) and the heaviest edges are embedded. The
   overview still counts everything.
+- **Findings:** the insights, the notes on each node and the work list look at
+  the whole graph, sharing what they work out: 300,000 transfers take a few
+  seconds. Past 1,000,000 links the view leaves them out unless you pass
+  `insights=True` (or `insights=g.explain()`).
 
 ```python
 g.show(renderer="webgl")              # force a renderer: "auto", "canvas", "webgl"

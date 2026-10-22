@@ -167,6 +167,46 @@ def test_node_notes_and_finding_rows_reach_the_page():
     assert any("just under 10,000" in t for t in webgl["nodes"]["notes"][str(i)])
 
 
+def test_huge_graphs_leave_the_findings_out_unless_asked(monkeypatch):
+    import tareco.viz as viz
+    rows = [{"tid": f"T{k}", "from": "p", "to": f"q{k % 2}", "amount": 9500 + k, "date": f"2026-01-0{k + 1}"}
+            for k in range(6)]
+    g = tc.Graph(rows, directed=True, keep=True)
+    monkeypatch.setattr(viz, "INSIGHTS_LINKS", 1)
+    with pytest.warns(UserWarning, match="insights=True"):
+        data = build_payload(g, lang="en")
+    assert data["config"]["insights"] == [] and data["config"]["review"] == []
+    forced = build_payload(g, lang="en", insights=True)
+    assert forced["config"]["insights"] and forced["config"]["review"]
+
+
+def test_the_view_works_each_heavy_result_out_once(monkeypatch):
+    import tareco.indicators as ind
+    import tareco.patterns as pat
+    rows = [{"tid": f"T{k}", "from": "p", "to": f"q{k % 2}", "amount": 9500 + k, "date": f"2026-01-0{k + 1}"}
+            for k in range(6)]
+    rows += [{"tid": f"S{k}", "from": f"c{k}", "to": f"shop{k % 3}", "amount": 20 + k, "date": "2026-01-02"}
+             for k in range(30)]
+    g = tc.Graph(rows, directed=True, keep=True)
+    calls = {}
+
+    def counted(name, fn):
+        def run(*a, **k):
+            calls[name] = calls.get(name, 0) + 1
+            return fn(*a, **k)
+        return run
+    for mod, name in ((pat, "_find"), (ind, "_transfers"), (ind, "_piles"), (ind, "_fast_moves"),
+                      (ind, "_unusual")):
+        monkeypatch.setattr(mod, name, counted(name, getattr(mod, name)))
+    to_html(g, lang="en")
+    assert calls == {"_find": 1, "_transfers": 1, "_piles": 1, "_fast_moves": 1, "_unusual": 1}
+    assert g._memo is None  # dropped on the way out: a later change to the graph is seen
+    g.add_links([{"tid": "T9", "from": "p", "to": "z", "amount": 9990, "date": "2026-01-08"}], keep=True)
+    assert len(ind.transfers(g)) == len(rows) + 1
+    import gc
+    assert gc.isenabled()
+
+
 def test_work_list_reaches_the_page():
     rows = [{"tid": f"T{k}", "from": "p", "to": f"q{k % 2}", "amount": 9500 + k, "date": f"2026-01-0{k + 1}"}
             for k in range(6)]

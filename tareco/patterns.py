@@ -77,6 +77,11 @@ def find_patterns(g, kinds=None, lang=None, limit=10, weight="weight", max_cycle
     min_fan     how many senders/receivers make a fan-in, fan-out or relay.
     """
     lang = i18n.get_language(lang)
+    key = ("patterns", tuple(kinds) if kinds is not None else None, lang, limit, weight, max_cycle, label, min_fan)
+    return Patterns(g._cached(key, lambda: _find(g, kinds, lang, limit, weight, max_cycle, label, min_fan)))
+
+
+def _find(g, kinds, lang, limit, weight, max_cycle, label, min_fan):
     wanted = KINDS if kinds is None else tuple(kinds)
     unknown = [k for k in wanted if k not in KINDS]
     if unknown:
@@ -109,7 +114,7 @@ def _flow_part(g):
     known = g.attrs.get("link_kinds") or {}
     if not g.directed or all(v.get("directed") for v in known.values()):
         return g
-    return g.only(None, *[k for k, v in known.items() if v.get("directed")])
+    return g._cached("flow_part", lambda: g.only(None, *[k for k, v in known.items() if v.get("directed")]))
 
 
 class _Context:
@@ -314,9 +319,14 @@ def _back_and_forth(ctx, limit):
 
 def _stars(ctx, limit, min_leaves=8):
     g = ctx.g
+    if g.directed:
+        neighbors = {y: set(g._succ[y]) | set(g._pred[y]) for y in g}
+    else:
+        neighbors = {y: set(g._succ[y]) for y in g}
+    lonely = {y for y, near in neighbors.items() if len(near - {y}) == 1}  # one neighbor besides itself
     out = []
     for x in g:
-        leaves = [y for y in g._all_neighbors(x) if y != x and len(set(g._all_neighbors(y)) - {y}) == 1]
+        leaves = [y for y in neighbors[x] if y != x and y in lonely]
         if len(leaves) >= min_leaves:
             out.append((len(leaves), x, leaves))
     out.sort(key=lambda t: -t[0])

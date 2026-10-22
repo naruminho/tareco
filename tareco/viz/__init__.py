@@ -15,6 +15,7 @@ import random
 import re
 import sys
 import tempfile
+import warnings
 import webbrowser
 from decimal import Decimal
 from importlib import resources
@@ -49,7 +50,7 @@ NOTEBOOK_BUDGET_MB = 25
 
 def to_html(g, color=None, size=None, label=None, edge_width=None, title=None, dim=2,
             particles=False, theme="auto", renderer="auto", max_nodes=None, max_edges=None,
-            budget_mb=None, lang=None, insights=True, time=None):
+            budget_mb=None, lang=None, insights="auto", time=None):
     """The interactive view as a standalone HTML document (string).
 
     color       attribute name, a metric ("community", "pagerank", "degree",
@@ -70,8 +71,10 @@ def to_html(g, color=None, size=None, label=None, edge_width=None, title=None, d
     budget_mb   shrink the graph until the page fits in this many megabytes.
     lang        "en" or "pt" for the interface and the insights (default:
                 tareco.set_language, else English).
-    insights    add the plain-language findings of ``explain()`` to the view
-                (True, False, or an Explanation to show instead).
+    insights    add the plain-language findings of ``explain()``, the notes on
+                each node and the work list to the view. "auto" does it up to
+                1,000,000 links, where it takes a minute at most; True always,
+                False never, or an Explanation to show instead.
     time        set by ``Timeline``: periods for the time slider.
     """
     return _build(g, dict(color=color, size=size, label=label, edge_width=edge_width,
@@ -188,6 +191,11 @@ def _choose_renderer(g, renderer, dim):
 
 
 def _build(g, options, renderer, max_nodes, max_edges, budget_mb, wrap):
+    with g._memoized():
+        return _build_page(g, options, renderer, max_nodes, max_edges, budget_mb, wrap)
+
+
+def _build_page(g, options, renderer, max_nodes, max_edges, budget_mb, wrap):
     kind = _choose_renderer(g, renderer, options.get("dim", 2))
     limits = WEBGL_MAX if kind == "webgl" else CANVAS_MAX
     max_nodes = limits[0] if max_nodes is None else max_nodes
@@ -342,7 +350,7 @@ def _config(g, nodes, triples, title, theme, legend, size, **extra):
 
 def build_payload(g, nodes=None, triples=None, metric=None, color=None, size=None, label=None,
                   edge_width=None, title=None, dim=2, particles=False, theme="auto", lang=None,
-                  insights=True, time=None):
+                  insights="auto", time=None):
     """Data for the canvas/3D view: one object per node and per link."""
     if nodes is None:
         nodes = list(g)
@@ -414,7 +422,7 @@ def _label(node, attrs, label):
 
 def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, size=None,
                         label=None, edge_width=None, title=None, dim=2, particles=False,
-                        theme="auto", lang=None, insights=True, time=None):
+                        theme="auto", lang=None, insights="auto", time=None):
     """Data for the WebGL view, column by column to keep big pages small."""
     if nodes is None:
         nodes = list(g)
@@ -519,9 +527,18 @@ def _node_notes(g, lang, label, index):
     return notes, work
 
 
+INSIGHTS_LINKS = 1_000_000  # above this, insights="auto" leaves the findings out
+
+
 def _insights(g, nodes, metric, legend, color, lang, label, enabled):
     """``(lang, findings, legend notes, community notes, node notes, work list)`` for the view."""
     lang = i18n.get_language(lang)
+    if isinstance(enabled, str) and enabled == "auto":
+        enabled = g.edge_count <= INSIGHTS_LINKS
+        if not enabled:
+            warnings.warn(f"the view leaves the findings out above {INSIGHTS_LINKS:,} links, where they take "
+                          "minutes; pass insights=True to have them anyway, or insights=g.explain()",
+                          UserWarning, stacklevel=2)
     if enabled is False or enabled is None or not len(g):
         return lang, [], {}, {}, {}, []
     from ..insights import Explanation, explain, profile

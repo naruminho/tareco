@@ -39,6 +39,15 @@ def flow_kinds(g):
 
 def transfers(g, time=None, need_time=False):
     """The single rows behind the flow links, as transfers with an amount and maybe a time."""
+    found = g._cached(("transfers", time), lambda: _transfers(g, time))
+    if need_time:
+        if found and found[0].when is None and all(t.when is None for t in found):
+            raise TarecoError("which column has the date? pass time=...")
+        return [t for t in found if t.when is not None]
+    return found
+
+
+def _transfers(g, time=None, need_time=False):
     if not g.attrs.get("kept"):
         raise TarecoError("this needs the single rows behind each link; load the graph with keep=True")
     weight = g.attrs.get("weight")
@@ -57,7 +66,7 @@ def transfers(g, time=None, need_time=False):
     for (u, v, _, row), when in zip(events, whens):
         x = row.get(weight)
         if _is_number(x) and x != 0 and (when is not None or not need_time):
-            out.append(_Transfer(u, v, abs(x), when, row))
+            out.append(_Transfer(u, v, x if x > 0 else -x, when, row))  # abs() would make a new float each time
     return out
 
 
@@ -189,6 +198,18 @@ def unusual_amounts(g, factor=10, min_history=5, time=None, lang=None, label=Non
     5 to 60 does not.
     """
     T = _Text(g, lang, label)
+    found = g._cached(("unusual", factor, min_history, time), lambda: _unusual(g, factor, min_history, time))
+    out = Patterns()
+    for ratio, t, usual in found[:limit]:
+        when = T("on_date", date=T.date(t.when)) if t.when else ""
+        text = T("unusual_amount", name=T.name(t.u), amount=T.num(t.amount), other=T.name(t.v), when=when,
+                 times=T.num(round(ratio)), usual=T.num(usual))
+        out.append(Pattern("unusual_amount", [t.u, t.v], ratio,
+                           {"amount": t.amount, "usual": usual, "when": t.when}, text, _rows([t])))
+    return out
+
+
+def _unusual(g, factor, min_history, time):
     items = transfers(g, time)
     cut = _quantile([t.amount for t in items], 0.95)
     by_sender = {}
@@ -205,14 +226,7 @@ def unusual_amounts(g, factor=10, min_history=5, time=None, lang=None, label=Non
             if t.amount >= factor * usual and t.amount >= cut:
                 found.append((t.amount / usual, t, usual))
     found.sort(key=lambda f: (-f[0], str(f[1].u)))
-    out = Patterns()
-    for ratio, t, usual in found[:limit]:
-        when = T("on_date", date=T.date(t.when)) if t.when else ""
-        text = T("unusual_amount", name=T.name(t.u), amount=T.num(t.amount), other=T.name(t.v), when=when,
-                 times=T.num(round(ratio)), usual=T.num(usual))
-        out.append(Pattern("unusual_amount", [t.u, t.v], ratio,
-                           {"amount": t.amount, "usual": usual, "when": t.when}, text, _rows([t])))
-    return out
+    return found
 
 
 # ------------------------------------------------------------------------ splits
@@ -243,11 +257,31 @@ def splits(g, limit=None, within="7 days", min_count=3, margin=0.1, time=None, l
     a payroll paying salaries of every size is not splitting anything.
     """
     T = _Text(g, lang, label)
+    found = g._cached(("splits", limit, str(within), min_count, margin, time),
+                      lambda: _piles(g, limit, within, min_count, margin, time))
+    out = Patterns()
+    for _, node, side, cap, window in found[:top]:
+        others = list(dict.fromkeys(t.v if side == "out" else t.u for t in window))
+        amounts = [t.amount for t in window]
+        text = T("split_" + side, name=T.name(node), k=T.num(len(window)), limit=T.num(cap),
+                 span=T.span(window[-1].when - window[0].when) if window[-1].when > window[0].when
+                 else T("span_same_day"), first=T.date(window[0].when), last=T.date(window[-1].when),
+                 r=T.num(len(others)), lo=T.num(min(amounts)), hi=T.num(max(amounts)))
+        out.append(Pattern("split", [node] + others, len(window),
+                           {"limit": cap, "side": side, "count": len(window), "total": sum(amounts),
+                            "first": window[0].when, "last": window[-1].when}, text, _rows(window)))
+    return out
+
+
+def _piles(g, limit, within, min_count, margin, time):
     items = transfers(g, time, need_time=True)
     span = parse_span(within)
     floor = 0 if limit is not None else _quantile([t.amount for t in items], 0.9)
     # without a limit to go by, a pile has to be big to stand out from chance
     need = min_count if limit is not None else max(min_count, 5)
+    # only amounts near a limit can be in a pile, or around one
+    low = (limit if limit is not None else floor) * (1 - 2 * margin)
+    items = sorted((t for t in items if t.amount >= low), key=lambda t: t.when)
     found = []
     for side in ("out", "in"):
         by_node = {}
@@ -256,7 +290,6 @@ def splits(g, limit=None, within="7 days", min_count=3, margin=0.1, time=None, l
         for node, mine in by_node.items():
             if len(mine) < need:
                 continue
-            mine.sort(key=lambda t: t.when)
             limits = [limit] if limit is not None else sorted(
                 {x for x in (_round_above(t.amount, margin) for t in mine) if x and x >= floor})
             best = None
@@ -285,18 +318,7 @@ def splits(g, limit=None, within="7 days", min_count=3, margin=0.1, time=None, l
             if best and (side == "out" or len({t.u for t in best[2]}) >= 2):
                 found.append((best[0], node, side, best[1], best[2]))
     found.sort(key=lambda f: (-f[0][0], -f[0][1], str(f[1])))
-    out = Patterns()
-    for _, node, side, cap, window in found[:top]:
-        others = list(dict.fromkeys(t.v if side == "out" else t.u for t in window))
-        amounts = [t.amount for t in window]
-        text = T("split_" + side, name=T.name(node), k=T.num(len(window)), limit=T.num(cap),
-                 span=T.span(window[-1].when - window[0].when) if window[-1].when > window[0].when
-                 else T("span_same_day"), first=T.date(window[0].when), last=T.date(window[-1].when),
-                 r=T.num(len(others)), lo=T.num(min(amounts)), hi=T.num(max(amounts)))
-        out.append(Pattern("split", [node] + others, len(window),
-                           {"limit": cap, "side": side, "count": len(window), "total": sum(amounts),
-                            "first": window[0].when, "last": window[-1].when}, text, _rows(window)))
-    return out
+    return found
 
 
 # ----------------------------------------------------------------------- misfits
@@ -560,20 +582,33 @@ def fast_moves(g, within="3 days", share=0.8, time=None, lang=None, label=None, 
     usually receives, count; money sent back to whoever sent it is not passing it on.
     """
     T = _Text(g, lang, label)
+    found = g._cached(("fast_moves", str(within), share, time), lambda: _fast_moves(g, within, share, time))
+    out = Patterns()
+    for moved, node, (_, came, went, inn, gone) in found[:limit]:
+        first = min(t.when for t in came)
+        last = max(t.when for t in came + went)
+        text = T("fast_pass", name=T.name(node), inn=T.num(inn), out=T.num(gone),
+                 span=T.span(last - first) if last > first else T("span_same_day"),
+                 first=T.date(first), last=T.date(last))
+        others = list(dict.fromkeys([t.u for t in came] + [t.v for t in went]))
+        out.append(Pattern("fast_pass", [node] + others, moved,
+                           {"in": inn, "out": gone, "first": first, "last": last}, text, _rows(came + went)))
+    return out
+
+
+def _fast_moves(g, within, share, time):
     items = transfers(g, time, need_time=True)
     span = parse_span(within)
     floor = _quantile([t.amount for t in items], 0.9)
     ins, outs = {}, {}
-    for t in items:
+    for t in sorted(items, key=lambda t: t.when):
         ins.setdefault(t.v, []).append(t)
         outs.setdefault(t.u, []).append(t)
     found = []
     for node, got in ins.items():
         sent = outs.get(node)
-        if not sent:
-            continue
-        got.sort(key=lambda t: t.when)
-        sent.sort(key=lambda t: t.when)
+        if not sent or sum(t.amount for t in got) < floor or sum(t.amount for t in sent) < share * floor:
+            continue  # too little in, or out, to ever count
         # with a history to compare, what came in has to be far above what usually comes in
         usual = _median([t.amount for t in got]) if len(got) >= 5 else 0
         best = None
@@ -590,17 +625,7 @@ def fast_moves(g, within="3 days", share=0.8, time=None, lang=None, label=None, 
         if best:
             found.append((best[0], node, best))
     found.sort(key=lambda f: (-f[0], str(f[1])))
-    out = Patterns()
-    for moved, node, (_, came, went, inn, gone) in found[:limit]:
-        first = min(t.when for t in came)
-        last = max(t.when for t in came + went)
-        text = T("fast_pass", name=T.name(node), inn=T.num(inn), out=T.num(gone),
-                 span=T.span(last - first) if last > first else T("span_same_day"),
-                 first=T.date(first), last=T.date(last))
-        others = list(dict.fromkeys([t.u for t in came] + [t.v for t in went]))
-        out.append(Pattern("fast_pass", [node] + others, moved,
-                           {"in": inn, "out": gone, "first": first, "last": last}, text, _rows(came + went)))
-    return out
+    return found
 
 
 def trace_transfers(items, source, target=None, within="30 days", hops=4, budget=200_000):

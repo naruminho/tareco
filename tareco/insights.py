@@ -474,10 +474,11 @@ def found_weight(g, weight):
 
 
 def _pattern_findings(g, lang, label, weight, per_kind=2, total=6):
-    from .patterns import find_patterns
-    found = find_patterns(g, lang=lang, limit=per_kind, weight=weight, label=label)
-    weights = sorted(d.get(found_weight(g, weight), 0) for _, _, d in g._edge_triples()
-                     if isinstance(d.get(found_weight(g, weight)), (int, float)))
+    from .patterns import Patterns, find_patterns
+    every = find_patterns(g, lang=lang, limit=200, weight=weight, label=label)  # shared with review()
+    found = Patterns(p for kind in dict.fromkeys(p.kind for p in every) for p in every.of(kind)[:per_kind])
+    w = found_weight(g, weight)
+    weights = sorted(d.get(w, 0) for _, _, d in g._edge_triples() if isinstance(d.get(w), (int, float)))
     typical = weights[len(weights) // 2] if weights else 0
     dense = density(g) >= 0.15  # in dense networks cliques are everywhere and say little
     out = []
