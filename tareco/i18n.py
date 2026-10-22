@@ -1,4 +1,4 @@
-"""Plain-language text for explanations and the view, in English and Portuguese."""
+"""Plain-language text for explanations and the view, in English, Portuguese and Spanish."""
 
 import locale
 import os
@@ -6,12 +6,15 @@ import re
 
 from .errors import TarecoError
 
-LANGUAGES = ("en", "pt")
+LANGUAGES = ("en", "pt", "es")
+COMMA_DECIMALS = ("pt", "es")  # 1.234,5
+AND = {"en": " and ", "pt": " e ", "es": " y "}
+SYSTEM_NAMES = {"portuguese": "pt", "spanish": "es"}  # Windows calls locales "Portuguese_Brazil"
 _default = None
 
 
 def set_language(lang):
-    """Language for explanations and the interactive view: "en" or "pt"; None goes back to automatic."""
+    """Language for explanations and the interactive view: "en", "pt" or "es"; None goes back to automatic."""
     global _default
     _default = None if lang is None else _check(lang)
 
@@ -28,16 +31,24 @@ def get_language(lang=None):
 
 
 def _system_language():
-    """Portuguese when the computer is set to Portuguese, so nobody has to ask for it."""
+    """Portuguese or Spanish when the computer is set to it, so nobody has to ask for it."""
     for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
         value = os.environ.get(var, "").lower()
         if value and value not in ("c", "posix", "c.utf-8"):
-            return "pt" if value.startswith("pt") else None
+            return _known(value)
     try:
         code = (locale.getlocale()[0] or "").lower()
     except (ValueError, TypeError):
         code = ""
-    return "pt" if code.startswith(("pt", "portuguese")) else None
+    return _known(code)
+
+
+def _known(code):
+    for name, lang in SYSTEM_NAMES.items():
+        if code.startswith(name):
+            return lang
+    code = code[:2]
+    return code if code in LANGUAGES and code != "en" else None
 
 
 def _check(lang):
@@ -48,7 +59,7 @@ def _check(lang):
 
 
 def number(value, lang, digits=1):
-    """1234.5 -> '1,234.5' (en) or '1.234,5' (pt); integers keep no decimals."""
+    """1234.5 -> '1,234.5' (en) or '1.234,5' (pt, es); integers keep no decimals."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return str(value)
     if isinstance(value, float) and value.is_integer() and abs(value) >= 100:
@@ -59,7 +70,7 @@ def number(value, lang, digits=1):
         text = f"{value:,.0f}"
     else:
         text = f"{value:,.{digits if abs(value) >= 1 else max(digits, 2)}f}".rstrip("0").rstrip(".")
-    if lang == "pt":
+    if lang in COMMA_DECIMALS:
         text = text.replace(",", "_").replace(".", ",").replace("_", ".")
     return text
 
@@ -67,14 +78,14 @@ def number(value, lang, digits=1):
 def percent(share, lang):
     pct = share * 100
     text = f"{pct:.0f}%" if pct >= 10 or pct == 0 else f"{pct:.1f}%"
-    return text.replace(".", ",") if lang == "pt" else text
+    return text.replace(".", ",") if lang in COMMA_DECIMALS else text
 
 
 def join(items, lang):
     items = [str(i) for i in items]
     if len(items) <= 1:
         return "".join(items)
-    word = " and " if lang == "en" else " e "
+    word = AND.get(lang, " and ")
     return ", ".join(items[:-1]) + word + items[-1]
 
 
@@ -373,6 +384,162 @@ TEXT = {
         "sim_typical_amount_low": "seu valor típico é baixo",
         "sim_links_low": "tem pouquíssimas ligações",
     },
+    "es": {
+        "group": "Grupo",
+        "overview": "{n} nodos y {m} conexiones; en promedio cada nodo se conecta con {avg} otros.",
+        "overview_directed": "{n} nodos y {m} enlaces con dirección; en promedio cada nodo participa en {avg} enlaces.",
+        "connected": "Todo está conectado en una única red.",
+        "parts": "La red está dividida en {c} partes separadas; la mayor reúne el {pct} de los nodos.",
+        "isolated": "{k} nodos no tienen ninguna conexión.",
+        "isolated_one": "1 nodo no tiene ninguna conexión.",
+        "small_parts": "{k} islas pequeñas, de 2 o 3 nodos, están aisladas del resto.",
+        "small_parts_one": "1 isla pequeña, de 2 o 3 nodos, está aislada del resto.",
+        "groups": "Se forman {k} grupos que se conectan sobre todo entre sí: el {pct} de las conexiones queda dentro de un grupo.",
+        "groups_loose": "Se forman {k} grupos, pero la mayoría de las conexiones ({pct}) cruza de un grupo a otro.",
+        "no_groups": "No hay grupos claros: las conexiones se reparten por toda la red.",
+        "group_line": "{name} ({size} nodos, {pct}){traits}. Miembros principales: {members}.",
+        "group_inward": "el {pct} de las conexiones queda dentro del grupo",
+        "central": "Los nodos más importantes son {names}.",
+        "broker": "{name} es un puente entre grupos: une {groups}.",
+        "hub": "{name} tiene {times}x más conexiones que un nodo típico ({d} frente a {median}).",
+        "collector": "{name} recibe de {k} nodos pero envía a {out}.",
+        "collector_only": "{name} recibe de {k} nodos, {only} de ellos no envían a nadie más, y envía a {out}.",
+        "distributor": "{name} envía a {k} nodos pero recibe de {inn}.",
+        "distributor_only": "{name} envía a {k} nodos, {only} de ellos no reciben de nadie más, y recibe de {inn}.",
+        "nobody": "ninguno",
+        "reciprocity": "El {pct} de los enlaces son de ida y vuelta.",
+        "concentration": "El 10% de las conexiones más fuertes concentra el {pct} del total de {weight}.",
+        "strongest": "La conexión más fuerte es entre {a} y {b} ({w}).",
+        "trait_category": "{attr}: {value} en el {share} (frente a {overall} en general)",
+        "trait_higher": "{attr} más alto: mediana {group} frente a {overall}",
+        "trait_lower": "{attr} más bajo: mediana {group} frente a {overall}",
+        "profile_size": "{size} nodos ({pct})",
+        "profile_members": "miembros principales: {members}",
+        "profile_inward": "conexiones dentro del grupo: {pct}",
+        "profile_link": "más ligado a: {name}",
+        "title": "Lo que muestra esta red",
+        "short_higher": "{attr} más alto",
+        "smaller_groups": "{k} grupos menores",
+        "route_sep": " a ",
+        "cycle": "{nodes} forman un ciclo: {route}.",
+        "cycle_amount": "Hasta {amount} puede dar la vuelta completa.",
+        "pass_through": "{name} recibe de {k_in} nodos y reenvía a {k_out}.",
+        "pass_through_amount": "{name} recibe de {k_in} nodos y reenvía casi todo a {k_out} ({got} entran, {gave} salen).",
+        "chain": "Una cadena de {k} intermediarios: {route}.",
+        "back_and_forth": "{a} y {b} se envían cantidades parecidas el uno al otro ({x} y {y}).",
+        "star": "{name} es la única conexión de {k} nodos.",
+        "clique": "{k} nodos están todos conectados entre sí: {names}.",
+        "and_more": " y {k} más",
+        "unit_day": "días",
+        "unit_week": "semanas",
+        "unit_month": "meses",
+        "unit_quarter": "trimestres",
+        "unit_year": "años",
+        "unit_period": "períodos",
+        "time_span": "De {first} a {last} ({k} {unit}): {n} nodos y {m} conexiones en total.",
+        "busiest": "El período más activo fue {period}, con {m} conexiones.",
+        "quiet": "No pasó nada en {k} de los períodos.",
+        "activity_up": "La actividad creció un {pct} en {period} (de {a} a {b} conexiones).",
+        "activity_down": "La actividad cayó un {pct} en {period} (de {a} a {b} conexiones).",
+        "newcomers": "{k} nodos nuevos aparecieron en {period}.",
+        "surge": "{name} saltó a {d} conexiones en {period} (unas {avg} por período antes).",
+        "debut": "{name} apareció en {period} ya con {d} conexiones.",
+        "new_group": "Un grupo nuevo de {k} nodos se formó en {period}, en torno a {names}.",
+        "merge": "Dos grupos se fusionaron en {period}: el de {a} y el de {b}.",
+        "split": "Un grupo se dividió en {period}: el de {a} se partió en grupos en torno a {names}.",
+        "short_lower": "{attr} más bajo",
+        "kinds": "Enlaces: {links}. Nodos: {nodes}.",
+        "shared": "{k} nodos de tipo {kind} comparten {name} ({own}).",
+        "unusual_amount": "{name} envió {amount} a {other}{when}, {times}x lo que suele enviar ({usual}).",
+        "on_date": " el {date}",
+        "split_out": "{name} envió {k} transferencias justo por debajo de {limit} en {span} ({first} a {last}), a {r} destinatarios, de {lo} a {hi} cada una.",
+        "split_in": "{name} recibió {k} transferencias justo por debajo de {limit} de {r} remitentes en {span} ({first} a {last}), de {lo} a {hi} cada una.",
+        "span_day": "1 día",
+        "span_days": "{n} días",
+        "span_hours": "{n} horas",
+        "span_same_day": "un solo día",
+        "misfit_lower": "{name} tiene {attr} {value}, {times}x menor que la mediana de los {k} nodos con los que se relaciona ({median}).",
+        "misfit_higher": "{name} tiene {attr} {value}, {times}x mayor que la mediana de los {k} nodos con los que se relaciona ({median}).",
+        "misfit_category": "{name} tiene {attr} {value}, pero el {pct} de los {k} nodos con los que se relaciona tienen {other}.",
+        "near_direct": "{name} está ligado directamente a {targets}.",
+        "near": "{name} está a {d} pasos de {targets}, pasando por {via}.",
+        "flows_title": "Adónde va, por {by}",
+        "flows_title_from": "De dónde viene, por {by}",
+        "flow_line": "{value}: {amount} ({share} del total), {links} enlaces de {k} nodos: {names}",
+        "flow_line_from": "{value}: {amount} ({share} del total), {links} enlaces a {k} nodos: {names}",
+        "why_title": "Sobre {name}",
+        "node_word": "nodo",
+        "review_title": "Vale la pena mirar",
+        "review_item": "{name} (puntos {score})",
+        "review_rows": ", {k} filas detrás",
+        "review_more": " (y {k} más parecidos)",
+        "changes_title": "Desde la última revisión",
+        "changes_none": "Nada cambió desde la última revisión.",
+        "changes_new": "Nuevos en la lista: {k}",
+        "changes_up": "Puntos que subieron: {k}",
+        "changes_down": "Puntos que bajaron: {k}",
+        "changes_gone": "Salieron de la lista: {k}",
+        "changes_moved": "{name}, {before} puntos antes, {after} ahora",
+        "changes_was": "{name} ({score} puntos antes)",
+        "entities_title": "Ligados por lo que comparten",
+        "check_ok": "Nada que corregir en {rows} filas.",
+        "check_title": "{k} puntos a revisar en {rows} filas",
+        "check_missing": "Filas sin {s} o {t}: {k}. Quedan fuera.",
+        "check_placeholder": "Filas con un comodín en {col} ({names}): {k}. Une filas sin relación a un nodo falso; déjelas fuera con skip=[...].",
+        "check_self": "Filas que unen un nodo consigo mismo: {k}.",
+        "check_duplicates": "Filas que son copias exactas de otra: {k}. Las filas repetidas se suman, así que cuentan doble.",
+        "check_mixed": "Ids escritos como número y como texto ({names}): {k}. Cada uno se vuelve dos nodos distintos.",
+        "check_variants": "Ids que difieren solo en espacios o mayúsculas ({names}): {k}. Se vuelven nodos distintos.",
+        "check_amount_text": "Valores de {col} que no son números ({names}): {k}.",
+        "check_amount_zero": "Filas con {col} 0: {k}.",
+        "check_no_money_out": "Ningún valor de {col} es negativo: en un extracto, el dinero que sale debería ser negativo.",
+        "check_dates": "Valores de {col} que no se pueden leer como fechas ({names}): {k}.",
+        "cmp_title": "Qué cambió",
+        "cmp_overview": "De {n1} a {n2} nodos ({dn}) y de {m1} a {m2} conexiones ({dm}).",
+        "cmp_weight": "El total de {weight} pasó de {w1} a {w2} ({pct}).",
+        "cmp_new": "{k} nodos son nuevos; los más conectados: {names}.",
+        "cmp_gone": "{k} nodos desaparecieron; los más conectados antes: {names}.",
+        "cmp_new_one": "1 nodo es nuevo: {names}.",
+        "cmp_gone_one": "1 nodo desapareció: {names}.",
+        "cmp_rose": "{name} subió del #{a} al #{b} en importancia.",
+        "cmp_jump": "{name} pasó de {a} a {b} conexiones.",
+        "cmp_new_group": "Un grupo nuevo de {k} nodos se formó, en torno a {names}.",
+        "cmp_gone_group": "Un grupo de {k} nodos desapareció, el de {names}.",
+        "cmp_merge": "Los grupos de {a} y de {b} se fusionaron.",
+        "cmp_grew": "El enlace entre {a} y {b} creció de {x} a {y}.",
+        "entity_line": "{members}: por {things}",
+        "fast_pass": "{name} recibió {inn} y reenvió {out} en {span} ({first} a {last}).",
+        "trace": "{route}: {k} transferencias de {first} a {last}, hasta {amount} en todo el camino.",
+        "why_identity": "{name} ({kind}){attrs}.",
+        "why_attrs": "{name}: {attrs}.",
+        "why_flows": "Envió {out} a {k_out} nodos y recibió {inn} de {k_in}.",
+        "why_links": "Está ligado a {k} nodos.",
+        "why_busy": "Son {times}x los enlaces de un {kind} típico ({d} frente a {median}).",
+        "why_rank": "Está entre el {pct} de nodos más importantes.",
+        "why_group": "Está en el {group}{traits}.",
+        "why_part_of": "Forma parte de: {text}",
+        "why_shares": "Comparte {things} con {others}.",
+        "why_seen": "Sus filas van de {first} a {last} ({k} filas).",
+        "why_nothing": "Nada destaca en {name}.",
+        "similar_title": "Más parecidos a {name}",
+        "similar_line": "{name} ({score}): {reasons}",
+        "similar_none": "nada en particular",
+        "sim_out_links": "envía a muchos nodos",
+        "sim_in_links": "recibe de muchos nodos",
+        "sim_out_amount": "envía montos altos",
+        "sim_in_amount": "recibe montos altos",
+        "sim_pass_through": "reenvía casi todo lo que recibe",
+        "sim_only_senders": "recibe de nodos que no envían a nadie más",
+        "sim_only_receivers": "envía a nodos que no reciben de nadie más",
+        "sim_splits": "acumula montos justo por debajo de un límite redondo",
+        "sim_unusual": "hizo transferencias muy por encima de lo normal",
+        "sim_shared": "comparte un {kind} con otros nodos",
+        "sim_cycles": "participa en ciclos",
+        "sim_chains": "está en una cadena de intermediarios",
+        "sim_typical_amount": "su monto típico es alto",
+        "sim_typical_amount_low": "su monto típico es bajo",
+        "sim_links_low": "tiene poquísimos enlaces",
+    },
 }
 
 
@@ -381,11 +548,14 @@ METRIC_NAMES = {
     "pt": {"count": "ocorrências", "community": "comunidade", "degree": "grau", "betweenness": "intermediação",
            "closeness": "proximidade", "clustering": "agrupamento", "core": "núcleo",
            "component": "componente", "pagerank": "pagerank", "in": "entrada", "out": "saída"},
+    "es": {"count": "ocurrencias", "community": "comunidad", "degree": "grado", "betweenness": "intermediación",
+           "closeness": "cercanía", "clustering": "agrupamiento", "core": "núcleo",
+           "component": "componente", "pagerank": "pagerank", "in": "entrada", "out": "salida"},
 }
 
 
 def metric_name(name, lang):
-    """Display name of a built-in metric ("community" -> "comunidade" in Portuguese)."""
+    """Display name of a built-in metric ("community" -> "comunidade" in Portuguese, "comunidad" in Spanish)."""
     return METRIC_NAMES.get(lang, {}).get(name, name)
 
 
@@ -400,6 +570,11 @@ SINGULAR = {
            "horas": "hora", "grupos": "grupo", "períodos": "período", "intermediários": "intermediário",
            "passos": "passo", "contas": "conta", "pessoas": "pessoa", "vezes": "vez", "membros": "membro",
            "pontos": "ponto"},
+    "es": {"nodos": "nodo", "remitentes": "remitente", "destinatarios": "destinatario", "filas": "fila",
+           "enlaces": "enlace", "transferencias": "transferencia", "conexiones": "conexión", "días": "día",
+           "horas": "hora", "grupos": "grupo", "períodos": "período", "intermediarios": "intermediario",
+           "pasos": "paso", "cuentas": "cuenta", "personas": "persona", "veces": "vez", "miembros": "miembro",
+           "puntos": "punto"},
 }
 _ONE = {lang: re.compile(r"(?<![\d.,])1 (" + "|".join(map(re.escape, words)) + r")\b")
         for lang, words in SINGULAR.items()}

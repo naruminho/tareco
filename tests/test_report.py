@@ -21,6 +21,8 @@ def test_report_has_every_section(tmp_path):
     path = friends().report(str(tmp_path / "r.html"), lang="pt")
     text = open(path, encoding="utf-8").read()
     assert "<h2>O que esta rede mostra</h2>" in text and "<h2>Grupos</h2>" in text
+    es = friends().report(lang="es")
+    assert '<html lang="es">' in es and "<h2>Lo que muestra esta red</h2>" in es and "Informe de la red" in es
 
 
 def test_timeline_report_has_activity():
@@ -51,3 +53,10 @@ def test_cli_time_report_around_and_patterns(tmp_path, capsys):
     capsys.readouterr()
     assert main([str(loops), "--directed", "--patterns"]) == 0
     assert "x, y and z form a loop" in capsys.readouterr().out
+
+
+def test_tareco_report_stays_a_function_after_a_graph_report(tmp_path):
+    import tareco as tc
+    tc.path_graph(3).report()
+    assert callable(tc.report)
+    assert tc.report([("a", "b")], str(tmp_path / "r.html")).endswith("r.html")

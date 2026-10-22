@@ -69,7 +69,7 @@ def to_html(g, color=None, size=None, label=None, edge_width=None, title=None, d
     max_edges   nodes (and heaviest edges). Defaults: 50,000/200,000 for WebGL,
                 3,000/12,000 for canvas and 3D.
     budget_mb   shrink the graph until the page fits in this many megabytes.
-    lang        "en" or "pt" for the interface and the insights (default:
+    lang        "en", "pt" or "es" for the interface and the insights (default:
                 tareco.set_language, else English).
     insights    add the plain-language findings of ``explain()``, the notes on
                 each node and the work list to the view. "auto" does it up to

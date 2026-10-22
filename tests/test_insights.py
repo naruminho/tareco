@@ -121,6 +121,32 @@ def test_explain_in_portuguese():
     assert "Iris é uma ponte entre grupos" in text
 
 
+def test_explain_in_spanish():
+    text = str(friends().explain(lang="es", weight="messages"))
+    assert text.startswith("Lo que muestra esta red")
+    assert "16 nodos y 31 conexiones; en promedio cada nodo se conecta con 3,9 otros." in text
+    assert "Grupo 1 (4 nodos, 25%): city: Recife en el 75% (frente a 19% en general)." in text
+    assert "Iris es un puente entre grupos" in text
+
+
+def test_every_language_says_the_same_things():
+    import re
+    from tareco.viz import _asset
+    fields = re.compile(r"{(\w+)")
+    for lang in i18n.LANGUAGES:
+        assert set(i18n.TEXT[lang]) == set(i18n.TEXT["en"]), lang
+        for key, text in i18n.TEXT["en"].items():
+            assert set(fields.findall(i18n.TEXT[lang][key])) == set(fields.findall(text)), (lang, key)
+    from tareco.report import HEADINGS
+    assert all(set(HEADINGS[lang]) == set(HEADINGS["en"]) for lang in i18n.LANGUAGES)
+    js = _asset("i18n.js")
+    keys = {}
+    for lang in i18n.LANGUAGES:
+        block = js[js.index(f"    {lang}: {{"):]
+        keys[lang] = set(re.findall(r"^      (\w+):", block[:block.index("\n    },")], re.M))
+    assert all(keys[lang] == keys["en"] for lang in i18n.LANGUAGES), keys
+
+
 def test_explain_disconnected_and_isolated():
     g = tc.Graph([("a", "b"), ("b", "c"), ("c", "a"), ("x", "y")], nodes=["lonely"])
     text = str(g.explain())
@@ -193,6 +219,10 @@ def test_number_formats():
     assert i18n.number(1234567, "en") == "1,234,567" and i18n.number(1234567, "pt") == "1.234.567"
     assert i18n.number(3.875, "pt") == "3,9" and i18n.number(0.034, "en") == "0.03"
     assert i18n.percent(0.25, "pt") == "25%" and i18n.percent(0.002, "pt") == "0,2%"
+    assert i18n.number(1234567, "es") == "1.234.567" and i18n.number(3.875, "es") == "3,9"
+    assert i18n.percent(0.002, "es") == "0,2%"
+    assert i18n.join(["a", "b", "c"], "es") == "a, b y c"
+    assert i18n.text("es", "span_days", n=1) == "1 día"  # "1 días" made singular
     assert i18n.join(["a", "b", "c"], "pt") == "a, b e c"
 
 

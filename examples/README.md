@@ -30,8 +30,8 @@ What the recipes find (the ring of transfers, the party in the outbreak, the new
 team in the e-mail, the amounts split under a limit) was planted on purpose, so you can watch tareco find it on
 its own.
 
-The sentences tareco writes come out in your computer's language (English or
-Portuguese); `tareco.set_language("en")` fixes it to English.
+The sentences tareco writes come out in your computer's language (English,
+Portuguese or Spanish); `tareco.set_language("en")` fixes it to English.
 
 ## Other files
 

@@ -43,6 +43,7 @@ from .tracing import records
 from .compare import compare
 from .case import load
 from .tuning import settings
+from . import report as _report_module  # loaded now, so a later import cannot put it in place of report() below
 
 __version__ = "1.5.0"
 

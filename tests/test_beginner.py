@@ -151,6 +151,13 @@ def test_language_follows_the_computer(monkeypatch):
     monkeypatch.delenv("LANG")
     monkeypatch.setattr(i18n.locale, "getlocale", lambda *a: ("Portuguese_Brazil", "1252"))
     assert i18n.get_language() == "pt"
+    monkeypatch.setattr(i18n.locale, "getlocale", lambda *a: ("Spanish_Mexico", "1252"))
+    assert i18n.get_language() == "es"
+    monkeypatch.setenv("LANG", "es_AR.UTF-8")
+    assert i18n.get_language() == "es"
+    monkeypatch.setenv("LANG", "fr_FR.UTF-8")
+    assert i18n.get_language() == "en"
+    monkeypatch.delenv("LANG")
     monkeypatch.setenv("TARECO_LANG", "en")
     assert i18n.get_language() == "en"  # an explicit choice wins
 

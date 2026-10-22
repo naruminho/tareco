@@ -1,4 +1,4 @@
-/* Interface text in English and Portuguese, shared by both views. */
+/* Interface text in English, Portuguese and Spanish, shared by both views. */
 function tarecoText(lang) {
   "use strict";
   const all = {
@@ -82,6 +82,46 @@ function tarecoText(lang) {
       rowsTitle: "Linhas por tr\u00e1s",
       moreRows: (k) => `+${k} linhas`,
     },
+    es: {
+      locale: "es-ES",
+      search: "Buscar",
+      searchLabel: "Buscar nodos",
+      fit: "Encuadrar",
+      labels: "Etiquetas",
+      freeze: "Congelar disposici\u00f3n",
+      resume: "Reanudar disposici\u00f3n",
+      path: "Camino m\u00e1s corto: haga clic en dos nodos",
+      groups: "Vista por grupos",
+      insights: "Hallazgos",
+      theme: "Tema",
+      save: "Guardar imagen",
+      pin: "Fijar en su lugar",
+      close: "Cerrar",
+      allGroups: "Todos los grupos",
+      metrics: "M\u00e9tricas",
+      attributes: "Atributos",
+      neighbors: "Vecinos",
+      pathTitle: "Camino",
+      step: "paso",
+      steps: "pasos",
+      noPath: (a, b) => `No hay camino de ${a} a ${b}`,
+      nodes: "nodos",
+      edges: "conexiones",
+      groupsWord: "grupos",
+      of: "de",
+      none: "ninguno",
+      more: (k) => `+${k} m\u00e1s`,
+      less: "Menos",
+      allPeriods: "Todos los per\u00edodos",
+      play: "Reproducir",
+      pause: "Pausar",
+      linkKinds: "Enlaces",
+      standsOut: "Lo que destaca",
+      review: "Vale la pena mirar",
+      score: "puntos",
+      rowsTitle: "Filas detr\u00e1s",
+      moreRows: (k) => `+${k} filas`,
+    },
   };
   const T = all[lang] || all.en;
   const tip = (id, text) => {
@@ -105,7 +145,7 @@ function tarecoText(lang) {
   if (close) close.setAttribute("aria-label", T.close);
   const search = document.getElementById("search");
   if (search) { search.placeholder = T.search; search.setAttribute("aria-label", T.searchLabel); }
-  document.documentElement.lang = lang === "pt" ? "pt-BR" : "en";
+  document.documentElement.lang = ({ pt: "pt-BR", es: "es" })[lang] || "en";
   return T;
 }
 

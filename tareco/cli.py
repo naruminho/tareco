@@ -42,7 +42,7 @@ def main(argv=None):
     p.add_argument("--max-nodes", type=int, help="keep only this many of the most important nodes")
     p.add_argument("--summary", action="store_true", help="print headline numbers and exit")
     p.add_argument("--explain", action="store_true", help="print what the network shows, in plain words")
-    p.add_argument("--lang", choices=("en", "pt"), help="language of the explanation and the page")
+    p.add_argument("--lang", choices=("en", "pt", "es"), help="language of the explanation and the page")
     p.add_argument("--project", nargs=2, metavar=("NODES", "VIA"),
                    help="two-sided table: link NODES that share VIA (e.g. --project customer product)")
     p.add_argument("--time", metavar="COLUMN", help="events with a time column: replay them on a time slider")

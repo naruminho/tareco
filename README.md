@@ -115,7 +115,7 @@ strongest trait.
 ```python
 g.profile()                     # every group in detail: traits, key members, cohesion
 g.profile(groups="segment")     # or group by any attribute, dict or list of sets
-tareco.set_language("pt")       # explanations and the interface in Portuguese
+tareco.set_language("pt")       # explanations and the interface in Portuguese ("es": Spanish)
                                 # (by default: TARECO_LANG, then the computer's language)
 ```
 

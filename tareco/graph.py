@@ -672,7 +672,7 @@ class Graph:
         return density(self)
 
     def explain(self, groups=None, lang=None, top=5, label=None, weight="weight"):
-        """The main facts about the network, in plain language ("en" or "pt").
+        """The main facts about the network, in plain language ("en", "pt" or "es").
 
         Groups, what characterizes each one, the most important nodes, bridges
         between groups, hubs, one-way flows and where the weight concentrates.

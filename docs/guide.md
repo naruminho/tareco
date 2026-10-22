@@ -77,8 +77,8 @@ g.shortest_path("Ana", "Davi")          # ['Ana', 'Caio', 'Davi']
 g.save("friends.html")                  # the page, to send to someone
 ```
 
-The sentences come out in your computer's language (English or Portuguese). To
-fix them to English: `tareco.set_language("en")`.
+The sentences come out in your computer's language (English, Portuguese or
+Spanish). To fix them to English: `tareco.set_language("en")`.
 
 ## What the table should look like
 
@@ -393,8 +393,8 @@ algorithm, don't pass `weight`.
 **An `.xls` file (old Excel)**
 Save it as `.xlsx` in Excel, or read it with pandas.
 
-**The sentences are in Portuguese**
-Your computer is set to Portuguese. `tareco.set_language("en")`, or the
+**The sentences are in Portuguese (or Spanish)**
+Your computer is set to that language. `tareco.set_language("en")`, or the
 environment variable `TARECO_LANG=en`.
 
 **"this needs the single rows behind each link; load the graph with keep=True"**

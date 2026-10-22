@@ -46,7 +46,16 @@ HEADINGS = {
            "connections": "Conexões", "period": "Período", "active": "Nós ativos",
            "weight": "Peso", "lead": "{n} nós e {m} conexões", "review": "Vale um olhar",
            "score": "Pontos", "why": "Por quê", "rows": "Linhas por trás", "more": "e mais {k}"},
+    "es": {"findings": "Lo que muestra esta red", "groups": "Grupos", "top": "Nodos más importantes",
+           "patterns": "Patrones", "activity": "Actividad a lo largo del tiempo", "graph": "Explore la red",
+           "group": "Grupo", "size": "Nodos", "share": "Parte", "traits": "Lo que lo distingue",
+           "members": "Miembros principales", "inward": "Dentro", "node": "Nodo", "importance": "Importancia",
+           "connections": "Conexiones", "period": "Período", "active": "Nodos activos",
+           "weight": "Peso", "lead": "{n} nodos y {m} conexiones", "review": "Vale la pena mirar",
+           "score": "Puntos", "why": "Por qué", "rows": "Filas detrás", "more": "y {k} más"},
 }
+TITLES = {"en": "Network report", "pt": "Relatório da rede", "es": "Informe de la red"}
+HTML_LANG = {"en": "en", "pt": "pt-BR", "es": "es"}
 
 
 def report(g, path=None, title=None, lang=None, label=None, timeline=None, height=640, **view):
@@ -58,7 +67,7 @@ def report(g, path=None, title=None, lang=None, label=None, timeline=None, heigh
     lang = i18n.get_language(lang)
     H = HEADINGS[lang]
     num = lambda v: i18n.number(v, lang)  # noqa: E731
-    title = title or g.attrs.get("title") or ("Network report" if lang == "en" else "Relatório da rede")
+    title = title or g.attrs.get("title") or TITLES[lang]
     exp = timeline.explain(lang=lang, label=label) if timeline is not None else g.explain(lang=lang, label=label)
     parts = [f"<h1>{_e(title)}</h1>",
              f'<p class="lead">{_e(H["lead"].format(n=num(len(g)), m=num(g.edge_count)))}</p>',
@@ -125,7 +134,7 @@ def report(g, path=None, title=None, lang=None, label=None, timeline=None, heigh
     frame = notebook_html(g, height=height, budget_mb=budget, **options)
     parts.append(f'<h2>{_e(H["graph"])}</h2>{frame}')
 
-    page = (f'<!doctype html><html lang="{"pt-BR" if lang == "pt" else "en"}"><head><meta charset="utf-8">'
+    page = (f'<!doctype html><html lang="{HTML_LANG[lang]}"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width, initial-scale=1"><title>{_e(title)}</title>'
             f"<style>{STYLE}</style></head><body><main>{''.join(parts)}</main></body></html>")
     page = page.encode("ascii", "xmlcharrefreplace").decode("ascii")

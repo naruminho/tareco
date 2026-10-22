@@ -205,6 +205,21 @@ def test_timeline_view(browser, tmp_path, renderer):
         p.close()
 
 
+@pytest.mark.parametrize("renderer", ["canvas", "webgl"])
+def test_interface_in_spanish(browser, tmp_path, renderer):
+    p = Page(browser, databricks_like(notebook_html(friends(), renderer=renderer, lang="es")), tmp_path)
+    try:
+        assert p.app.eval_on_selector("html", "e => e.lang") == "es"
+        assert p.app.get_attribute("#btn-fit", "data-tip") == "Encuadrar"
+        assert p.app.eval_on_selector("#search", "e => e.placeholder") == "Buscar"
+        p.app.click("#btn-insights")
+        p.settle()
+        assert p.text("#panel-body").startswith("Lo que muestra esta red") or "nodos" in p.text("#panel-body")
+        assert not p.errors, p.errors
+    finally:
+        p.close()
+
+
 def test_report_page(browser, tmp_path):
     p = Page(browser, friends().report(title="Friends"), tmp_path)
     try:
