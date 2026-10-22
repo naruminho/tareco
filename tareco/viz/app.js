@@ -406,7 +406,9 @@
     $("btn-pin").classList.toggle("on", !!n.pinned);
     const nbrs = [...n.nbrs].filter((m) => m !== n).sort((a, b) => b.val - a.val);
     const shown = nbrs.slice(0, 80);
-    let html = `<div class="section-title">${T.metrics}</div>${kv(n.metrics)}`;
+    let html = n.notes && n.notes.length
+      ? `<div class="section-title">${T.standsOut}</div>${tarecoNotesHtml(n.notes, esc)}` : "";
+    html += `<div class="section-title">${T.metrics}</div>${kv(n.metrics)}`;
     const attrs = kv(n.attrs);
     if (attrs) html += `<div class="section-title">${T.attributes}</div>${attrs}`;
     if (nbrs.length) {
@@ -444,13 +446,20 @@
   function spotlight(k) {
     if (timebar && insights[k].period !== null && insights[k].period !== undefined) timebar.set(insights[k].period);
     const list = insights[k].nodes.map((i) => byId.get(i)).filter((n) => n && visible(n));
-    if (!list.length) return;
+    if (!list.length) { showRows(k); return; }
     const set = new Set(list);
     const ls = new Set(links.filter((l) => { const [a, b] = ends(l); return set.has(a) && set.has(b); }));
     state.spot = { nodes: set, links: ls, center: null };
     for (const el of document.querySelectorAll(".finding")) el.classList.toggle("on", el.dataset.k === String(k));
+    showRows(k);
     update();
     fitNodes(list);
+  }
+  // the rows of the user's table behind a finding, right under it
+  function showRows(k) {
+    for (const el of document.querySelectorAll(".rows-box")) el.remove();
+    const el = document.querySelector(`.finding[data-k="${k}"]`);
+    if (el && insights[k].rows) el.insertAdjacentHTML("afterend", tarecoRowsHtml(insights[k], esc, fmt, T));
   }
   $("panel-body").addEventListener("click", (e) => {
     const b = e.target.closest(".chip");

@@ -36,6 +36,9 @@ function tarecoText(lang) {
       play: "Play",
       pause: "Pause",
       linkKinds: "Links",
+      standsOut: "What stands out",
+      rowsTitle: "Rows behind it",
+      moreRows: (k) => `+${k} more rows`,
     },
     pt: {
       locale: "pt-BR",
@@ -71,6 +74,9 @@ function tarecoText(lang) {
       play: "Reproduzir",
       pause: "Pausar",
       linkKinds: "Liga\u00e7\u00f5es",
+      standsOut: "O que chama aten\u00e7\u00e3o",
+      rowsTitle: "Linhas por tr\u00e1s",
+      moreRows: (k) => `+${k} linhas`,
     },
   };
   const T = all[lang] || all.en;
@@ -99,6 +105,26 @@ function tarecoText(lang) {
 }
 
 /* The insights list in the side panel: plain-language findings, each one clickable when it is about nodes. */
+/* What stands out about a node, one line per kind of signal. */
+function tarecoNotesHtml(notes, esc) {
+  "use strict";
+  return `<ul class="notes">${notes.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>`;
+}
+
+/* The rows of the user's table behind a finding, as a small scrollable table. */
+function tarecoRowsHtml(finding, esc, fmt, T) {
+  "use strict";
+  const rows = finding.rows || [];
+  if (!rows.length) return "";
+  const cols = [];
+  for (const r of rows) for (const k of Object.keys(r)) if (!cols.includes(k)) cols.push(k);
+  const head = cols.map((c) => `<th>${esc(c)}</th>`).join("");
+  const body = rows.map((r) => `<tr>${cols.map((c) => `<td>${esc(fmt(r[c]))}</td>`).join("")}</tr>`).join("");
+  const more = finding.rowCount > rows.length ? `<div class="muted">${T.moreRows(finding.rowCount - rows.length)}</div>` : "";
+  return `<div class="rows-box"><div class="section-title">${T.rowsTitle} <span class="muted">${fmt(finding.rowCount)}</span></div>` +
+    `<div class="rows-scroll"><table class="rows"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>${more}</div>`;
+}
+
 function tarecoInsightsHtml(findings, colorOfGroup, esc) {
   "use strict";
   return findings.map((f, k) => {

@@ -149,3 +149,19 @@ def test_link_kinds_reach_the_page():
     assert sorted(webgl["edges"]["k"]) == [0, 0, 1]
     plain = build_payload(tc.path_graph(3))
     assert plain["config"]["linkKinds"] is None and "k" not in plain["links"][0]
+
+
+def test_node_notes_and_finding_rows_reach_the_page():
+    rows = [{"tid": f"T{k}", "from": "p", "to": f"q{k % 2}", "amount": 9500 + k, "date": f"2026-01-0{k + 1}"}
+            for k in range(6)]
+    rows += [{"tid": f"S{k}", "from": f"c{k}", "to": f"shop{k % 3}", "amount": 20 + k, "date": "2026-01-02"}
+             for k in range(30)]
+    g = tc.Graph(rows, directed=True, keep=True)
+    data = build_payload(g, lang="en")
+    p = next(n for n in data["nodes"] if n["label"] == "p")
+    assert any("just under 10,000" in t for t in p["notes"])
+    split = next(f for f in data["config"]["insights"] if f["kind"] == "split")
+    assert split["rowCount"] == 6 and split["rows"][0]["tid"] == "T0"
+    webgl = payload_from_html(to_html(g, renderer="webgl", lang="en"))
+    i = webgl["nodes"]["label"].index("p")
+    assert any("just under 10,000" in t for t in webgl["nodes"]["notes"][str(i)])

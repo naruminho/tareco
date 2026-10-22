@@ -555,7 +555,9 @@
     if (groupCount > 1 && !(cfg.groupName in N.metrics) && !(cfg.groupTitle in N.attrs)) {
       metrics.push([cfg.groupName, G.label[N.grp[i]]]);
     }
-    let html = `<div class="section-title">${T.metrics}</div>${kv(metrics)}`;
+    const notes = N.notes && N.notes[String(i)];
+    let html = notes && notes.length ? `<div class="section-title">${T.standsOut}</div>${tarecoNotesHtml(notes, esc)}` : "";
+    html += `<div class="section-title">${T.metrics}</div>${kv(metrics)}`;
     const attrs = kv(Object.keys(N.attrs).map((k) => [k, N.attrs[k][i]]));
     if (attrs) html += `<div class="section-title">${T.attributes}</div>${attrs}`;
     const nbrs = [...new Set(nbList.subarray(nbStart[i], nbStart[i + 1]))].filter((j) => j !== i);
@@ -594,6 +596,9 @@
   }
   function markFinding(k) {
     for (const el of document.querySelectorAll(".finding")) el.classList.toggle("on", el.dataset.k === String(k));
+    for (const el of document.querySelectorAll(".rows-box")) el.remove();
+    const el = document.querySelector(`.finding[data-k="${k}"]`);
+    if (el && insights[k] && insights[k].rows) el.insertAdjacentHTML("afterend", tarecoRowsHtml(insights[k], esc, fmt, T));
   }
   function spotlight(k) {
     const f = insights[k];
@@ -601,7 +606,7 @@
       if (state.view.kind === "overview") buildView({ kind: "all" });
       timebar.set(f.period);
     }
-    if (!f.nodes.length) return;
+    if (!f.nodes.length) { markFinding(k); return; }
     const gi = f.kind === "group" && cfg.groupTitle === "community" ? G.key.indexOf(f.group) : -1;
     if (gi >= 0 && groupCount > 1) {
       buildView({ kind: "group", g: gi });

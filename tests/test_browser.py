@@ -236,3 +236,27 @@ def test_link_kinds_in_the_legend(browser, tmp_path, renderer):
         assert "off" not in p.app.get_attribute(uses, "class")
     finally:
         p.close()
+
+
+@pytest.mark.parametrize("renderer", ["canvas", "webgl"])
+def test_node_card_and_rows_behind_a_finding(browser, tmp_path, renderer):
+    rows = [{"tid": f"T{k}", "from": "p", "to": f"q{k % 2}", "amount": 9500 + k, "date": f"2026-01-0{k + 1}"}
+            for k in range(6)]
+    rows += [{"tid": f"S{k}", "from": f"c{k}", "to": f"shop{k % 3}", "amount": 20 + k, "date": "2026-01-02"}
+             for k in range(30)]
+    g = tc.Graph(rows, directed=True, keep=True)
+    p = Page(browser, g.to_html(renderer=renderer, lang="en"), tmp_path)
+    try:
+        p.settle(800)
+        p.app.fill("#search", "p")
+        p.app.press("#search", "Enter")
+        p.settle()
+        assert "What stands out" in p.text("#panel-body") and "just under 10,000" in p.text("#panel-body")
+        p.app.click("#btn-insights")
+        p.settle()
+        p.app.click("button.finding-split")
+        p.settle()
+        assert p.app.query_selector(".rows-box") is not None
+        assert "T0" in p.text(".rows-box") and "Rows behind it" in p.text(".rows-box")
+    finally:
+        p.close()
