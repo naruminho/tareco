@@ -773,6 +773,11 @@ class Graph:
         from .investigate import similar_to
         return similar_to(self, nodes, n=n, lang=lang, label=label)
 
+    def compare(self, after, lang=None, label=None, top=3):
+        """What changed from this graph to ``after`` (another month, region, version), in words."""
+        from .compare import compare
+        return compare(self, after, lang=lang, label=label, top=top)
+
     def summary(self):
         """Headline numbers about the graph."""
         from .algorithms.structure import summary

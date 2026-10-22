@@ -36,6 +36,7 @@ from .i18n import set_language
 from .excel import read_excel
 from .io import GuessWarning, read_csv, read_json
 from .tracing import records
+from .compare import compare
 
 __version__ = "1.4.0"
 
@@ -90,7 +91,7 @@ def _graph(data, options):
 
 __all__ = [
     "Graph", "show", "save", "explain", "report", "read_csv", "read_json", "read_excel", "project", "neighborhood",
-    "timeline", "records",
+    "timeline", "records", "compare",
     "Timeline", "set_language", "doctor",
     "algorithms", "generators",
     "complete_graph", "path_graph", "cycle_graph", "star_graph", "grid_graph", "random_graph",

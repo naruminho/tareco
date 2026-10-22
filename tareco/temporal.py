@@ -357,6 +357,11 @@ class Timeline:
         findings += [f for f in whole.findings if f.kind in keep]
         return Explanation(findings, whole.profiles, lang)
 
+    def compare(self, before, after, lang=None, label=None, top=3):
+        """What changed from one period to another: ``timeline.compare("2026-01", "2026-06")``."""
+        from .compare import compare
+        return compare(self[before], self[after], lang=lang, label=label, top=top)
+
     def trace(self, source, target=None, within="30 days", hops=4, lang=None, label=None, limit=10):
         """Paths from ``source`` that follow the events in time order (see ``Graph.trace``)."""
         from .indicators import _Transfer, trace

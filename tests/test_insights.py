@@ -203,3 +203,32 @@ def test_one_is_singular():
     assert i18n.text("en", "why_links", k="1") == "It is linked to 1 node."
     assert i18n.text("en", "why_links", k="21") == "It is linked to 21 nodes."
     assert i18n.text("pt", "kinds", links="1 ligações", nodes="1 conexões") == "Ligações: 1 ligação. Nós: 1 conexão."
+
+
+# ---------------------------------------------------------------------- compare
+
+def test_compare_two_networks():
+    before = tc.community_graph([10, 10], p_in=0.8, p_out=0.02, seed=1)
+    after = before.copy()
+    for i in range(12):
+        after.add_edge(f"new{i}", f"new{(i + 1) % 12}")
+        after.add_edge(f"new{i}", f"new{(i + 5) % 12}")
+    after.add_edge(3, "new0")
+    for i in range(10, 16):
+        after.add_edge(0, i)
+    after.remove_node(19)
+    text = str(tc.compare(before, after, lang="en"))
+    assert text.startswith("What changed\n- From 20 to 31 nodes (+11)")
+    assert "12 nodes are new; the most connected:" in text and "1 node is gone: 19." in text
+    assert "A new group of 12 nodes formed, around" in text
+    rise = str(tc.compare(tc.path_graph(8), tc.star_graph(7), lang="en"))
+    assert "0 rose from #7 to #1 in importance." in rise
+    hub = [("h", f"l{i}") for i in range(8)] + [("x", "l0")]
+    jumped = hub + [("x", f"l{i}") for i in range(1, 7)]
+    assert "x went from 1 to 7 connections." in str(tc.compare(tc.Graph(hub), tc.Graph(jumped), lang="en"))
+    assert str(before.compare(after, lang="pt")).startswith("O que mudou\n- De 20 para 31 nós (+11)")
+    weighted = tc.Graph([("a", "b", 10), ("b", "c", 5)])
+    grown = tc.Graph([("a", "b", 40), ("b", "c", 5)])
+    out = str(tc.compare(weighted, grown, lang="en"))
+    assert "The total weight went from 15 to 45 (+200%)." in out
+    assert "The link between a and b grew from 10 to 40." in out

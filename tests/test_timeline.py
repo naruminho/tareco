@@ -207,3 +207,9 @@ def test_timeline_show(monkeypatch):
     monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url) or True)
     story().show(title="x")
     assert len(opened) == 1
+
+
+def test_timeline_compare():
+    t = story()
+    text = str(t.compare("2026-01", "2026-05", lang="en"))
+    assert "nodes are new" in text and "star" in text
