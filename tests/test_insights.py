@@ -194,3 +194,12 @@ def test_number_formats():
     assert i18n.number(3.875, "pt") == "3,9" and i18n.number(0.034, "en") == "0.03"
     assert i18n.percent(0.25, "pt") == "25%" and i18n.percent(0.002, "pt") == "0,2%"
     assert i18n.join(["a", "b", "c"], "pt") == "a, b e c"
+
+
+def test_one_is_singular():
+    g = tc.Graph([{"from": "a", "to": "b", "amount": 40}, {"from": "c", "to": "a", "amount": 100}], directed=True)
+    assert "It sent 40 to 1 node and received 100 from 1." in str(g.why("a", lang="en"))
+    assert "Enviou 40 para 1 nó e recebeu 100 de 1." in str(g.why("a", lang="pt"))
+    assert i18n.text("en", "why_links", k="1") == "It is linked to 1 node."
+    assert i18n.text("en", "why_links", k="21") == "It is linked to 21 nodes."
+    assert i18n.text("pt", "kinds", links="1 ligações", nodes="1 conexões") == "Ligações: 1 ligação. Nós: 1 conexão."

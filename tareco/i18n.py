@@ -2,6 +2,7 @@
 
 import locale
 import os
+import re
 
 from .errors import TarecoError
 
@@ -306,5 +307,20 @@ def metric_name(name, lang):
     return METRIC_NAMES.get(lang, {}).get(name, name)
 
 
+SINGULAR = {
+    "en": {"nodes": "node", "senders": "sender", "receivers": "receiver", "rows": "row", "links": "link",
+           "transfers": "transfer", "connections": "connection", "days": "day", "hours": "hour",
+           "groups": "group", "periods": "period", "intermediaries": "intermediary", "steps": "step",
+           "accounts": "account", "people": "person", "times": "time", "members": "member"},
+    "pt": {"nós": "nó", "remetentes": "remetente", "destinatários": "destinatário", "linhas": "linha",
+           "ligações": "ligação", "transferências": "transferência", "conexões": "conexão", "dias": "dia",
+           "horas": "hora", "grupos": "grupo", "períodos": "período", "intermediários": "intermediário",
+           "passos": "passo", "contas": "conta", "pessoas": "pessoa", "vezes": "vez", "membros": "membro"},
+}
+_ONE = {lang: re.compile(r"(?<![\d.,])1 (" + "|".join(map(re.escape, words)) + r")\b")
+        for lang, words in SINGULAR.items()}
+
+
 def text(lang, key, **values):
-    return TEXT[lang][key].format(**values)
+    out = TEXT[lang][key].format(**values)
+    return _ONE[lang].sub(lambda m: "1 " + SINGULAR[lang][m.group(1)], out)  # "1 nodes" -> "1 node"
