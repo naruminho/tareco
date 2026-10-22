@@ -23,7 +23,7 @@ Money flows: Graph(statements, account=..., counterparty=..., keep=True) reads
 bank statements; g.add_links(...) adds other kinds of links (devices, addresses);
 g.splits(), g.unusual_amounts(), g.misfits(), g.near(), g.flows(), g.why(node) and
 g.similar_to(node) point at what deserves a look, and tareco.records(...) takes you
-back to the rows of your own tables.
+back to the rows of your own tables. tareco.settings(...) sets how sensitive they are.
 """
 
 from . import algorithms, big, generators
@@ -42,6 +42,7 @@ from .quality import check
 from .tracing import records
 from .compare import compare
 from .case import load
+from .tuning import settings
 
 __version__ = "1.5.0"
 
@@ -96,7 +97,7 @@ def _graph(data, options):
 
 __all__ = [
     "Graph", "show", "save", "explain", "report", "read_csv", "read_json", "read_excel", "project", "neighborhood",
-    "timeline", "records", "compare", "load",
+    "timeline", "records", "compare", "load", "settings",
     "Timeline", "set_language", "doctor",
     "algorithms", "big", "generators",
     "complete_graph", "path_graph", "cycle_graph", "star_graph", "grid_graph", "random_graph",

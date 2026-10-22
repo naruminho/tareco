@@ -448,6 +448,7 @@ PATTERN_PRIORITY = ("cycle", "pass_through", "fan_in", "fan_out", "chain", "shar
 def _behavior_findings(g, lang, label):
     """Amounts piling under a limit, transfers far above the usual, nodes far unlike their neighbors."""
     from .indicators import attribute_kinds, fast_moves, misfits, splits, unusual_amounts
+    from .tuning import setting
     out = []
     if g.attrs.get("kept"):
         for look in (splits, fast_moves, unusual_amounts):
@@ -459,7 +460,8 @@ def _behavior_findings(g, lang, label):
     numbers = [a for a, k in attribute_kinds(g).items() if k == "number"]
     if numbers:
         out += [Finding(p.kind, p.text, p.nodes)
-                for p in misfits(g, attrs=numbers, factor=20, lang=lang, label=label, limit=2)]
+                for p in misfits(g, attrs=numbers, factor=2 * setting("misfit_factor"), lang=lang, label=label,
+                                 limit=2)]  # a summary keeps the starkest
     return out
 
 

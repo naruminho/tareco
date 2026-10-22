@@ -105,15 +105,17 @@ class Entities(list):
         return out
 
 
-def entities(g, via=None, max_share=10, lang=None, label=None):
+def entities(g, via=None, max_share=None, lang=None, label=None):
     """Groups of nodes tied together by identifiers they share: probably one person.
 
     via         the node kinds that identify ("device", ["phone", "address"]).
                 Default: the kinds tied to others only by links without direction.
     max_share   identifiers shared by more nodes than this tie nothing (a branch
-                computer, a mall's address).
+                computer, a mall's address). Default: ``tareco.settings`` shared_max.
     """
+    from .tuning import setting
     T = _Text(g, lang, label)
+    max_share = setting("shared_max", max_share)
     known = g.attrs.get("link_kinds") or {}
     plain = {k for k, v in known.items() if not v.get("directed")}
     if via is None:

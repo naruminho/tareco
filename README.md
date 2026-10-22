@@ -303,6 +303,22 @@ tareco.records(spark.table("statements"), g.similar_to("a017").nodes, columns=["
 `tareco.records` looks up any list of ids in the original table and returns it
 in the table's own format; on Spark the filter runs in the cluster.
 
+**How sensitive.** Every tool takes its thresholds as arguments; `tareco.settings`
+changes the defaults they all fall back on, the work list's weights included:
+
+```python
+tareco.settings(split_limit=10_000, unusual_factor=20)   # from now on
+with tareco.settings(fast_within="24 hours", weights={"near": 3}):
+    g.review()                                           # only inside the block
+print(tareco.settings())                                 # every setting, the changed ones marked
+```
+
+The names follow the tools: `split_limit`, `split_within`, `split_count`,
+`split_margin`; `unusual_factor`, `unusual_history`, `unusual_top`; `fast_within`,
+`fast_share`, `fast_top`; `misfit_factor`, `misfit_neighbors`; `fan_min`,
+`cycle_max`, `near_hops`, `shared_max`; `weights`, `repeat`, `repeat_cap`.
+`help(tareco.settings)` says what each one does; `reset=True` puts them all back.
+
 **Pick it up later.** `g.save("case.tareco")` writes the whole graph to one file:
 nodes, links, the rows kept behind them, the kinds of link and node, and the id
 prefixes. `tareco.load("case.tareco")` (or `tareco.Graph("case.tareco")`) gives it

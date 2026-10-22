@@ -515,12 +515,14 @@ REVIEW_SHOWN = 30   # nodes in the view's work list
 
 def _node_notes(g, lang, label, index):
     """``({node: [lines]}, work list)``: what stands out about each node, and the nodes ranked."""
-    from ..review import WEIGHTS, ReviewItem, review, signals
+    from ..review import ReviewItem, review, signals
+    from ..tuning import setting
+    weights = setting("weights")
     try:
         found = signals(g, lang=lang, label=label)
     except TarecoError:
         return {}, []
-    notes = {n: ReviewItem(n, 0, sorted(s, key=lambda x: -WEIGHTS.get(x.kind, 1.0)), [], [], lang).reasons
+    notes = {n: ReviewItem(n, 0, sorted(s, key=lambda x: -weights.get(x.kind, 1.0)), [], [], lang).reasons
              for n, s in found.items()}
     work = [{"node": index[r.node], "score": r.score, "reasons": r.reasons[:3], "rows": len(r.rows)}
             for r in review(g, lang=lang, label=label, top=REVIEW_SHOWN, found=found) if r.node in index]

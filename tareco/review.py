@@ -5,12 +5,9 @@ from .errors import TarecoError
 from .indicators import _Text, misfits, near, splits, unusual_amounts
 from .patterns import find_patterns
 from .tracing import Rows
+from .tuning import setting
 
-# how much each kind of signal weighs in the ranking; a second signal of the same kind adds a little
-WEIGHTS = {"split": 3.0, "fast_pass": 2.5, "unusual_amount": 2.0, "cycle": 2.0, "chain": 2.0,
-           "pass_through": 2.0, "fan_in": 2.0, "fan_out": 1.5, "misfit": 1.5, "near": 1.5, "shared": 1.0}
-REPEAT = 0.25        # per extra signal of a kind already counted
-REPEAT_CAP = 0.5     # ... and no more than this per kind: twenty loops are one story
+# how much each kind of signal weighs, and what a second one of a kind adds: see tareco.settings
 ID_WORDS = ("id", "tid", "txid", "uuid", "guid")
 
 
@@ -24,7 +21,7 @@ class Signal:
         return self.text
 
 
-def signals(g, watch=None, limit=None, within="7 days", lang=None, label=None):
+def signals(g, watch=None, limit=None, within=None, lang=None, label=None):
     """``{node: [Signal, ...]}``: every pattern and behavior found, attached to the nodes it is about."""
     key = ("signals", tuple(watch) if isinstance(watch, (list, tuple)) else watch, limit, str(within), lang, label)
     return g._cached(key, lambda: _signals(g, watch, limit, within, lang, label))
@@ -178,7 +175,7 @@ def _id_column(rows):
     return None
 
 
-def review(g, watch=None, limit=None, within="7 days", top=50, lang=None, label=None, found=None):
+def review(g, watch=None, limit=None, within=None, top=50, lang=None, label=None, found=None):
     """Every node something stands out about, ranked, with its reasons and the rows behind them.
 
     watch   a list to check closeness to (flagged nodes, known cases), as in ``near``.
@@ -196,16 +193,17 @@ def review(g, watch=None, limit=None, within="7 days", top=50, lang=None, label=
         found = signals(g, watch=watch, limit=limit, within=within, lang=T.lang, label=label)
     kept = [e[3] for e in g._events[:200]] if g.attrs.get("kept") else []
     id_column = _id_column(kept)
+    weights, repeat, cap = setting("weights"), setting("repeat"), setting("repeat_cap")
     items = []
     for node, sigs in found.items():
         extra, score = {}, 0.0
         for s in sigs:
             if s.kind not in extra:
-                score += WEIGHTS.get(s.kind, 1.0)
+                score += weights.get(s.kind, 1.0)
                 extra[s.kind] = 0.0
-            elif extra[s.kind] < REPEAT_CAP:
-                score += REPEAT
-                extra[s.kind] += REPEAT
+            elif extra[s.kind] < cap:
+                score += repeat
+                extra[s.kind] += repeat
         rows = Rows()
         keys = set()
         for s in sigs:
@@ -215,7 +213,7 @@ def review(g, watch=None, limit=None, within="7 days", top=50, lang=None, label=
                     keys.add(key)
                     rows.append(r)
         ids = [r.get(id_column) for r in rows] if id_column else []
-        sigs = sorted(sigs, key=lambda s: -WEIGHTS.get(s.kind, 1.0))
+        sigs = sorted(sigs, key=lambda s: -weights.get(s.kind, 1.0))
         items.append(ReviewItem(node, round(score, 2), sigs, rows, ids, T.lang))
     order = {n: i for i, n in enumerate(g)}
     items.sort(key=lambda r: (-r.score, order.get(r.node, 0)))

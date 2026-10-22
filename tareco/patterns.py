@@ -68,15 +68,17 @@ class Patterns(list):
                              for p in self])
 
 
-def find_patterns(g, kinds=None, lang=None, limit=10, weight="weight", max_cycle=4, label=None,
-                  min_fan=5):
+def find_patterns(g, kinds=None, lang=None, limit=10, weight="weight", max_cycle=None, label=None,
+                  min_fan=None):
     """Look for every pattern kind (or only ``kinds``) and describe what was found.
 
     limit       most patterns kept per kind.
     max_cycle   longest loop searched (3 to 6 is sensible).
     min_fan     how many senders/receivers make a fan-in, fan-out or relay.
     """
+    from .tuning import setting
     lang = i18n.get_language(lang)
+    max_cycle, min_fan = setting("cycle_max", max_cycle), setting("fan_min", min_fan)
     key = ("patterns", tuple(kinds) if kinds is not None else None, lang, limit, weight, max_cycle, label, min_fan)
     return Patterns(g._cached(key, lambda: _find(g, kinds, lang, limit, weight, max_cycle, label, min_fan)))
 

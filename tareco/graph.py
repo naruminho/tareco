@@ -699,8 +699,8 @@ class Graph:
         return project_graph(self, nodes, via=via, method=method, min_shared=min_shared,
                              max_item_size=max_item_size)
 
-    def patterns(self, kinds=None, lang=None, limit=10, weight="weight", max_cycle=4, label=None,
-                 min_fan=5):
+    def patterns(self, kinds=None, lang=None, limit=10, weight="weight", max_cycle=None, label=None,
+                 min_fan=None):
         """Shapes worth a look: loops, fan-ins and fan-outs, relays, chains, stars, cliques.
 
         Each pattern has ``kind``, ``nodes``, ``score`` and a plain-language ``text``.
@@ -710,7 +710,7 @@ class Graph:
         return find_patterns(self, kinds=kinds, lang=lang, limit=limit, weight=weight,
                              max_cycle=max_cycle, label=label, min_fan=min_fan)
 
-    def unusual_amounts(self, factor=10, min_history=5, time=None, lang=None, label=None, limit=10):
+    def unusual_amounts(self, factor=None, min_history=None, time=None, lang=None, label=None, limit=10):
         """Transfers far above what the sender usually sends (needs ``keep=``).
 
         ``factor`` times the sender's usual amount, and among the largest 5% of
@@ -720,7 +720,7 @@ class Graph:
         return unusual_amounts(self, factor=factor, min_history=min_history, time=time, lang=lang,
                                label=label, limit=limit)
 
-    def splits(self, limit=None, within="7 days", min_count=3, margin=0.1, time=None, lang=None,
+    def splits(self, limit=None, within=None, min_count=None, margin=None, time=None, lang=None,
                label=None, top=10):
         """Many amounts just under a limit in a short time, by one sender or into one receiver.
 
@@ -733,7 +733,7 @@ class Graph:
         return splits(self, limit=limit, within=within, min_count=min_count, margin=margin, time=time,
                       lang=lang, label=label, top=top)
 
-    def fast_moves(self, within="3 days", share=0.8, time=None, lang=None, label=None, limit=10):
+    def fast_moves(self, within=None, share=None, time=None, lang=None, label=None, limit=10):
         """Nodes that receive a large amount and pass most of it on to others within a short time.
 
         >>> g.fast_moves(within="3 days")
@@ -751,7 +751,7 @@ class Graph:
         return trace(self, source, target, within=within, hops=hops, time=time, lang=lang, label=label,
                      limit=limit)
 
-    def entities(self, via=None, max_share=10, lang=None, label=None):
+    def entities(self, via=None, max_share=None, lang=None, label=None):
         """Groups of nodes tied by identifiers they share (devices, phones, addresses): probably one person.
 
         >>> people = g.entities(via="device")
@@ -762,7 +762,7 @@ class Graph:
         from .entities import entities
         return entities(self, via=via, max_share=max_share, lang=lang, label=label)
 
-    def misfits(self, attrs=None, factor=10, min_neighbors=3, lang=None, label=None, limit=10):
+    def misfits(self, attrs=None, factor=None, min_neighbors=None, lang=None, label=None, limit=10):
         """Nodes unlike the ones they deal with: a far lower or higher number, a rare category.
 
         >>> g.misfits("monthly_income")
@@ -771,7 +771,7 @@ class Graph:
         return misfits(self, attrs=attrs, factor=factor, min_neighbors=min_neighbors, lang=lang,
                        label=label, limit=limit)
 
-    def near(self, targets, hops=2, lang=None, label=None, limit=10, kinds=None):
+    def near(self, targets, hops=None, lang=None, label=None, limit=10, kinds=None):
         """Nodes within ``hops`` steps of a list you give, and through whom (paths skip hubs).
 
         >>> g.near(["a017", "a020"])          # or an attribute: g.near("flagged")
@@ -795,7 +795,7 @@ class Graph:
         with self._memoized():
             return why(self, node, watch=watch, lang=lang, label=label)
 
-    def review(self, watch=None, limit=None, within="7 days", top=50, lang=None, label=None):
+    def review(self, watch=None, limit=None, within=None, top=50, lang=None, label=None):
         """Every node something stands out about, ranked, with its reasons and the rows behind them.
 
         >>> g.review(watch=["a017"]).to_pandas()     # a work list for whoever investigates

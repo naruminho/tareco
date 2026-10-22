@@ -15,6 +15,7 @@ from . import i18n
 from .errors import TarecoError
 from .io import _is_number, _kinds_of, _missing
 from .patterns import Pattern, Patterns
+from .tuning import setting
 
 TIME_NAMES = ("date", "datetime", "time", "timestamp", "ts", "when", "day", "data", "dia", "dt",
               "created_at", "booked_at", "posted_at", "value_date", "booking_date")
@@ -189,16 +190,20 @@ def _median(values):
 
 # --------------------------------------------------------------- unusual amounts
 
-def unusual_amounts(g, factor=10, min_history=5, time=None, lang=None, label=None, limit=10):
+def unusual_amounts(g, factor=None, min_history=None, time=None, lang=None, label=None, limit=10):
     """Transfers far above what the sender usually sends.
 
     factor       how many times the sender's usual (median) amount.
     min_history  senders with fewer transfers than this are not judged.
     Only amounts among the largest 5% of the whole network count, so a jump from
-    5 to 60 does not.
+    5 to 60 does not. Defaults come from ``tareco.settings`` (unusual_factor,
+    unusual_history, unusual_top).
     """
     T = _Text(g, lang, label)
-    found = g._cached(("unusual", factor, min_history, time), lambda: _unusual(g, factor, min_history, time))
+    factor, min_history = setting("unusual_factor", factor), setting("unusual_history", min_history)
+    top = setting("unusual_top")
+    found = g._cached(("unusual", factor, min_history, time, top),
+                      lambda: _unusual(g, factor, min_history, time, top))
     out = Patterns()
     for ratio, t, usual in found[:limit]:
         when = T("on_date", date=T.date(t.when)) if t.when else ""
@@ -209,9 +214,9 @@ def unusual_amounts(g, factor=10, min_history=5, time=None, lang=None, label=Non
     return out
 
 
-def _unusual(g, factor, min_history, time):
+def _unusual(g, factor, min_history, time, top):
     items = transfers(g, time)
-    cut = _quantile([t.amount for t in items], 0.95)
+    cut = _quantile([t.amount for t in items], 1 - top)
     by_sender = {}
     for t in items:
         by_sender.setdefault(t.u, []).append(t)
@@ -242,7 +247,7 @@ def _round_above(amount, margin):
     return None
 
 
-def splits(g, limit=None, within="7 days", min_count=3, margin=0.1, time=None, lang=None, label=None,
+def splits(g, limit=None, within=None, min_count=None, margin=None, time=None, lang=None, label=None,
            top=10):
     """Many amounts just under a limit in a short time, sent or received by one node.
 
@@ -254,9 +259,12 @@ def splits(g, limit=None, within="7 days", min_count=3, margin=0.1, time=None, l
     margin      how close counts as "just under": 0.1 means within 10%.
 
     A pile only counts when the amounts gather under the limit, not around it:
-    a payroll paying salaries of every size is not splitting anything.
+    a payroll paying salaries of every size is not splitting anything. Defaults
+    come from ``tareco.settings`` (split_limit, split_within, split_count, split_margin).
     """
     T = _Text(g, lang, label)
+    limit, within = setting("split_limit", limit), setting("split_within", within)
+    min_count, margin = setting("split_count", min_count), setting("split_margin", margin)
     found = g._cached(("splits", limit, str(within), min_count, margin, time),
                       lambda: _piles(g, limit, within, min_count, margin, time))
     out = Patterns()
@@ -344,7 +352,7 @@ def attribute_kinds(g, attrs=None):
     return out
 
 
-def misfits(g, attrs=None, factor=10, min_neighbors=3, lang=None, label=None, limit=10):
+def misfits(g, attrs=None, factor=None, min_neighbors=None, lang=None, label=None, limit=10):
     """Nodes unlike the nodes they deal with: much lower or higher numbers, or a rare category.
 
     attrs          node attributes to compare (default: every number and category).
@@ -352,9 +360,11 @@ def misfits(g, attrs=None, factor=10, min_neighbors=3, lang=None, label=None, li
     min_neighbors  neighbors with the attribute needed to judge a node.
 
     Neighbors are compared with nodes of the same kind (accounts with accounts),
-    whatever the link between them.
+    whatever the link between them. Defaults come from ``tareco.settings``
+    (misfit_factor, misfit_neighbors).
     """
     T = _Text(g, lang, label)
+    factor, min_neighbors = setting("misfit_factor", factor), setting("misfit_neighbors", min_neighbors)
     kinds = attribute_kinds(g, attrs)
     if attrs is not None:
         missing = [a for a in ([attrs] if isinstance(attrs, str) else attrs) if a not in kinds]
@@ -419,7 +429,7 @@ def targets_of(g, targets):
     raise TarecoError(f"{targets!r} is neither a node nor a true/false attribute of the nodes")
 
 
-def near(g, targets, hops=2, lang=None, label=None, limit=10, kinds=None):
+def near(g, targets, hops=None, lang=None, label=None, limit=10, kinds=None):
     """Nodes within ``hops`` steps of a list you give (flagged accounts, known cases).
 
     targets   a node, a list of nodes, an attribute that is true for them
@@ -431,6 +441,7 @@ def near(g, targets, hops=2, lang=None, label=None, limit=10, kinds=None):
     a big shop): everybody is a couple of steps from them.
     """
     T = _Text(g, lang, label)
+    hops = setting("near_hops", hops)
     start = targets_of(g, targets)
     if not start:
         raise TarecoError("none of the targets is in the graph")
@@ -572,7 +583,7 @@ def flows(g, by, direction="to", weight="weight", lang=None, label=None):
 
 # ------------------------------------------------------------- fast moves, trace
 
-def fast_moves(g, within="3 days", share=0.8, time=None, lang=None, label=None, limit=10):
+def fast_moves(g, within=None, share=None, time=None, lang=None, label=None, limit=10):
     """Nodes that pass money on fast: they receive a large amount and send most of it to
     others within a short time.
 
@@ -580,9 +591,12 @@ def fast_moves(g, within="3 days", share=0.8, time=None, lang=None, label=None, 
     share   how much of what came in has to go out again (0.8: at least 80%).
     Only amounts among the largest 10% of the network, and far above what the node
     usually receives, count; money sent back to whoever sent it is not passing it on.
+    Defaults come from ``tareco.settings`` (fast_within, fast_share, fast_top).
     """
     T = _Text(g, lang, label)
-    found = g._cached(("fast_moves", str(within), share, time), lambda: _fast_moves(g, within, share, time))
+    within, share, top = setting("fast_within", within), setting("fast_share", share), setting("fast_top")
+    found = g._cached(("fast_moves", str(within), share, time, top),
+                      lambda: _fast_moves(g, within, share, time, top))
     out = Patterns()
     for moved, node, (_, came, went, inn, gone) in found[:limit]:
         first = min(t.when for t in came)
@@ -596,10 +610,10 @@ def fast_moves(g, within="3 days", share=0.8, time=None, lang=None, label=None, 
     return out
 
 
-def _fast_moves(g, within, share, time):
+def _fast_moves(g, within, share, time, top):
     items = transfers(g, time, need_time=True)
     span = parse_span(within)
-    floor = _quantile([t.amount for t in items], 0.9)
+    floor = _quantile([t.amount for t in items], 1 - top)
     ins, outs = {}, {}
     for t in sorted(items, key=lambda t: t.when):
         ins.setdefault(t.v, []).append(t)
