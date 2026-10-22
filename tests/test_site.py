@@ -22,7 +22,14 @@ def test_site_builds(tmp_path):
     statements = (out / "recipes" / "09-statements.html").read_text(encoding="utf-8")
     assert '<iframe src="09-statements/statements.html"' in statements
     assert (out / "recipes" / "09-statements" / "statements.svg").exists()
-    for page in [out / "index.html", out / "guide.html", out / "recipes.html", *pages]:
+    api = (out / "api.html").read_text(encoding="utf-8")
+    for anchor in ("tareco.settings", "tareco.load", "Graph.review", "Graph.save", "Review.compare",
+                   "Changes.to_pandas", "Check.ok", "big.communities"):
+        assert f'id="{anchor}"' in api, anchor
+    assert "<dt><code>split_limit, split_within, split_count, split_margin</code></dt>" in api
+    assert '<pre><code>&gt;&gt;&gt; g.review(watch=[&quot;a017&quot;]).to_pandas()' in api
+    assert '<a href="api.html" class=on>API</a>' in api
+    for page in [out / "index.html", out / "guide.html", out / "recipes.html", out / "api.html", *pages]:
         text = page.read_text(encoding="utf-8")
         local = [h for h in re.findall(r'href="([^"]+)"', text) if not h.startswith(("http", "#", "mailto:"))]
         assert not [h for h in local if ".md" in h], (page.name, local)

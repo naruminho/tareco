@@ -1,4 +1,4 @@
-"""Build the documentation site: the README, the guide and every recipe with its live graphs.
+"""Build the documentation site: the README, the guide, every recipe with its live graphs and the API.
 
     pip install markdown
     python docs/site/build.py site        # then open site/index.html
@@ -69,7 +69,8 @@ def rewrite_links(body, source, page):
 def page(title, body, depth, active):
     up = "../" * depth
     nav = "".join(f'<a href="{up}{href}"{" class=on" if name == active else ""}>{name}</a>'
-                  for name, href in (("Home", "index.html"), ("Guide", "guide.html"), ("Recipes", "recipes.html")))
+                  for name, href in (("Home", "index.html"), ("Guide", "guide.html"), ("Recipes", "recipes.html"),
+                                     ("API", "api.html")))
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)} - tareco</title><link rel="stylesheet" href="{up}style.css"></head>
@@ -129,6 +130,9 @@ def build(out_dir):
         first_h1 = body.find("</h1>")
         body = body[:first_h1 + 5] + live(folder, out_dir) + body[first_h1 + 5:] if first_h1 >= 0 else body
         (out_dir / name).write_text(page(title_of(source), body, 1, "Recipes"), encoding="utf-8")
+    sys.path.insert(0, str(Path(__file__).parent))
+    import api
+    (out_dir / "api.html").write_text(page("API reference", api.build_body(), 0, "API"), encoding="utf-8")
     print(f"site written to {out_dir}")
 
 

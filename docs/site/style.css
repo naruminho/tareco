@@ -36,9 +36,21 @@ img { max-width: 100%; border-radius: 10px; }
 .live iframe { width: 100%; height: 560px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
 .files { font-size: 14px; color: var(--muted); }
 .files a { margin-right: 10px; }
+.toc { columns: 2; padding-left: 18px; }
+.api { margin: 18px 0 26px; }
+.api h3 { margin: 0 0 6px; font-size: 17px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.api h3 a { color: var(--text); text-decoration: none; }
+.api .sig { font-size: 13px; color: var(--muted); background: none; padding: 0; white-space: pre-wrap; }
+.api p { margin: 6px 0; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0; font-size: 15px; }
+dt { white-space: nowrap; }
+dd { margin: 0; }
 footer { max-width: 880px; margin: 0 auto; padding: 24px 20px 40px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
 @media (max-width: 640px) {
   header { padding: 10px 16px; gap: 12px; }
   main { padding: 16px 16px 48px; }
   .live iframe { height: 440px; }
+  .toc { columns: 1; }
+  dl { grid-template-columns: 1fr; }
+  dd { margin: 0 0 6px 12px; }
 }

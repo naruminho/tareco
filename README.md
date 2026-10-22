@@ -14,7 +14,8 @@ the view is a single self-contained HTML file that works offline.
 pip install tareco
 ```
 
-**Documentation, recipes and live examples: [naruminho.github.io/tareco](https://naruminho.github.io/tareco/).**
+**Documentation, recipes and live examples: [naruminho.github.io/tareco](https://naruminho.github.io/tareco/),
+with the [API reference](https://naruminho.github.io/tareco/api.html).**
 
 New to graphs? There are [nine worked recipes](examples/README.md), each a real
 question with its data and a commented script: friends, money transfers, a

@@ -262,6 +262,7 @@ class Changes:
         return out
 
     def to_pandas(self):
+        """``table()`` as a pandas DataFrame."""
         try:
             import pandas as pd
         except ImportError:

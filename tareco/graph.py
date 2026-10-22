@@ -713,8 +713,11 @@ class Graph:
     def unusual_amounts(self, factor=None, min_history=None, time=None, lang=None, label=None, limit=10):
         """Transfers far above what the sender usually sends (needs ``keep=``).
 
-        ``factor`` times the sender's usual amount, and among the largest 5% of
-        the network. Each result has the ``rows`` of your table behind it.
+        factor       how many times the sender's usual (median) amount (10).
+        min_history  senders with fewer transfers than this are not judged (5).
+
+        Only amounts among the largest 5% of the network count. Each result has
+        the ``rows`` of your table behind it. Defaults: ``tareco.settings``.
         """
         from .indicators import unusual_amounts
         return unusual_amounts(self, factor=factor, min_history=min_history, time=time, lang=lang,
@@ -726,8 +729,13 @@ class Graph:
 
         >>> g.splits(limit=10_000, within="7 days")
 
-        Without ``limit``, amounts piling up just under any round number count.
-        Needs ``keep=`` and a date column. See ``tareco.indicators.splits``.
+        limit       the amount to stay under. Without it, amounts piling up just
+                    under any round number (1,000, 3,000, 5,000...) count.
+        within      how close in time ("7 days", "48 hours").
+        min_count   how many amounts make a pile (3; at least 5 without a limit).
+        margin      how close counts as "just under": 0.1 is within 10%.
+
+        Needs ``keep=`` and a date column. Defaults: ``tareco.settings``.
         """
         from .indicators import splits
         return splits(self, limit=limit, within=within, min_count=min_count, margin=margin, time=time,
@@ -737,6 +745,12 @@ class Graph:
         """Nodes that receive a large amount and pass most of it on to others within a short time.
 
         >>> g.fast_moves(within="3 days")
+
+        within  how fast ("3 days", "48 hours").
+        share   how much of what came in has to go out again (0.8: at least 80%).
+
+        Only amounts among the largest 10% of the network, and far above what the
+        node usually receives, count. Defaults: ``tareco.settings``.
         """
         from .indicators import fast_moves
         return fast_moves(self, within=within, share=share, time=time, lang=lang, label=label, limit=limit)
@@ -766,6 +780,10 @@ class Graph:
         """Nodes unlike the ones they deal with: a far lower or higher number, a rare category.
 
         >>> g.misfits("monthly_income")
+
+        attrs          node attributes to compare (default: every number and category).
+        factor         for numbers, how many times above or below the neighbors' median (10).
+        min_neighbors  neighbors with the attribute needed to judge a node (3).
         """
         from .indicators import misfits
         return misfits(self, attrs=attrs, factor=factor, min_neighbors=min_neighbors, lang=lang,
