@@ -1,0 +1,20 @@
+station_a,station_b,minutes,line
+Airport,New Town,5,Blue
+New Town,Central,6,Blue
+Central,Square,4,Blue
+Square,Market,4,Blue
+Market,University,3,Blue
+University,Park,3,Blue
+Bus Terminal,Hospital,2,Green
+Hospital,Square,4,Green
+Square,Cathedral,6,Green
+Cathedral,Stadium,5,Green
+Stadium,Lake,6,Green
+Port,Factory,2,Red
+Factory,Central,4,Red
+Central,Cathedral,6,Red
+Cathedral,Mall,6,Red
+Mall,Uptown,2,Red
+University,Mall,5,Yellow
+Mall,Stadium,3,Yellow
+Stadium,Garden,5,Yellow

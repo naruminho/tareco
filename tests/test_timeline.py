@@ -83,6 +83,19 @@ def test_snapshots_union_and_activity():
     assert [a["connections"] for a in growing.activity()] == [1, 0, 1]
 
 
+def test_weight_is_picked_like_in_a_graph():
+    rows = [{"sender": "a", "receiver": "b", "when": "2026-01-05", "amount": 10},
+            {"sender": "a", "receiver": "b", "when": "2026-01-09", "amount": 5},
+            {"sender": "b", "receiver": "c", "when": "2026-02-01", "amount": 1}]
+    assert tc.timeline(rows, time="when").union.edges["a", "b"]["weight"] == 15
+    events = [{k: v for k, v in r.items() if k != "amount"} for r in rows]
+    assert tc.timeline(events, time="when").union.edges["a", "b"]["weight"] == 2  # no number: count events
+    with pytest.raises(tc.TarecoError, match="no column 'kg'"):
+        tc.timeline(rows, time="when", weight="kg")
+    with pytest.raises(tc.TarecoError, match="cannot be the weight"):
+        tc.timeline(rows, time="when", weight="when")
+
+
 def test_columns_and_errors():
     with pytest.raises(tc.TarecoError, match="no column 'when'"):
         tc.timeline([{"a": 1, "b": 2, "t": 3}], time="when")
@@ -105,9 +118,10 @@ def test_changes_tell_the_story():
     assert "30 nós novos apareceram em 2026-04." in pt
 
 
-def classes(party=None):
-    """Three weeks of eight classes, each meeting in random pairs every day; maybe a party on day 10."""
-    rng = random.Random(3)
+def classes(party=None, seed=3):
+    """Three weeks of eight classes meeting in random pairs every day, plus a few chance
+    meetings across classes; maybe a party on day 10."""
+    rng = random.Random(seed)
     people = [f"P{i:03d}" for i in range(160)]
     rows = []
     for d in range(1, 22):
@@ -115,16 +129,20 @@ def classes(party=None):
             for _ in range(6):
                 a, b = rng.sample(people[c * 20:(c + 1) * 20], 2)
                 rows.append((a, b, f"2026-05-{d:02d}"))
+        for _ in range(4):
+            a, b = rng.sample(people, 2)
+            rows.append((a, b, f"2026-05-{d:02d}"))
         if d == 10 and party:
             rows += [(party, p, "2026-05-10") for p in rng.sample(people, 40) if p != party]
     return tc.timeline(rows, time=2, freq="day")
 
 
-def test_a_network_filling_up_is_not_news():
-    quiet = classes()
+@pytest.mark.parametrize("seed", [3, 4, 5, 6])
+def test_a_network_filling_up_is_not_news(seed):
+    quiet = classes(seed=seed)
     kinds = {f.kind for f in quiet.changes()}
     assert "newcomers" not in kinds and "new_group" not in kinds
-    party = [f for f in classes(party="P077").changes() if f.kind == "new_group"]
+    party = [f for f in classes(party="P077", seed=seed).changes() if f.kind == "new_group"]
     assert len(party) == 1 and "P077" in party[0].nodes and len(party[0].nodes) >= 20
 
 

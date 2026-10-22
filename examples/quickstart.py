@@ -15,7 +15,7 @@ print("Friend groups:", g.communities())
 print("Who should meet?", g.suggest_links(top=3))
 
 # What the network shows, in plain words (lang="pt" for Portuguese).
-print(g.explain(weight="messages"))
+print(g.explain())   # messages, the only number column, is the weight
 print(g.profile())
 
 # Color by any attribute or metric, size by another one.

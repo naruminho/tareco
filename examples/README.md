@@ -1,36 +1,40 @@
-# Exemplos
+# Examples
 
-Oito receitas completas, cada uma com uma pergunta de verdade, os dados prontos
-na pasta e um script comentado passo a passo. Rode de dentro da pasta do tareco:
+Eight complete recipes, each with a real question, its data ready in the
+folder and a script commented step by step. Run them from the tareco folder:
 
 ```bash
-python examples/receitas/01-amigos/amigos.py
+python examples/recipes/01-friends/friends.py
 ```
 
-Cada receita grava páginas HTML interativas na sua pasta `saida/`. Os scripts
-são divididos em células (`# %%`), então também abrem como notebook no VS Code,
-no Jupyter (com jupytext) e no Databricks.
+Each recipe saves interactive HTML pages to its `out/` folder. The scripts are
+split into cells (`# %%`), so they also open as notebooks in VS Code, in Jupyter
+(with jupytext) and in Databricks.
 
-Nunca usou grafos? Comece pela 01 e leia o [guia do iniciante](../docs/guia.md).
+Never used graphs? Start with recipe 01 and read the [beginner's guide](../docs/guide.md).
 
-| Receita | A pergunta | O que você aprende |
+| Recipe | The question | What you learn |
 | --- | --- | --- |
-| [01. Amigos](receitas/01-amigos/) | Quem anda com quem e quem faz a ponte? | `Graph`, `explain`, `communities`, `shortest_path`, `top_neighbors`, `suggest_links`, `profile`, `save` |
-| [02. Transferências](receitas/02-transacoes/) | Onde o dinheiro circula de um jeito estranho? | `directed=True`, `patterns` (ciclo, muitos para um, cadeia), `timeline`, `neighborhood`, `report` |
-| [03. Suprimentos](receitas/03-suprimentos/) | Quanto dá para entregar e onde está o gargalo? | `max_flow` e corte mínimo, `remove_node`, `k_shortest_paths` |
-| [04. Cesta de compras](receitas/04-compras/) | Que tipos de cliente existem? Quem compra X compra o quê? | `read_excel`, `project` (dados de dois lados), `method="newman"`, `attrs` |
-| [05. E-mails](receitas/05-emails/) | As áreas trabalham em silos? O que mudou? | `profile(groups=...)`, pontes, `timeline(freq="month")`, `spread` |
-| [06. Dependências](receitas/06-software/) | Em que ordem instalar? O que quebra junto? | `find_cycle`, `topological_sort`, `reverse`, `bfs`, `pagerank` |
-| [07. Surto](receitas/07-surto/) | Quem pode ter sido exposto, e quando? | `timeline(freq="day")`, `spread` na ordem do tempo, `changes` |
-| [08. Metrô](receitas/08-metro/) | Qual o caminho mais rápido? Que estação é vital? | `weight=`, `distance`, `betweenness`, `components`, o erro `NoPath` |
+| [01. Friends](recipes/01-friends/) | Who hangs out with whom, and who bridges the groups? | `Graph`, `explain`, `communities`, `shortest_path`, `top_neighbors`, `suggest_links`, `profile`, `save` |
+| [02. Money transfers](recipes/02-transfers/) | Where does money move in a strange way? | `directed=True`, `patterns` (loop, many to one, chain), `timeline`, `neighborhood`, `report` |
+| [03. Supply chain](recipes/03-supply-chain/) | How much can be delivered, and where is the bottleneck? | `max_flow` and the minimum cut, `remove_node`, `k_shortest_paths` |
+| [04. Shopping baskets](recipes/04-shopping/) | What kinds of customer are there? Who buys X also buys what? | `read_excel`, `project` (two-sided data), `method="newman"`, `attrs` |
+| [05. E-mail](recipes/05-email/) | Do the departments work in silos? What changed? | `profile(groups=...)`, bridges, `timeline(freq="month")`, `spread` |
+| [06. Dependencies](recipes/06-dependencies/) | In what order to install? What breaks together? | `find_cycle`, `topological_sort`, `reverse`, `bfs`, `pagerank` |
+| [07. Outbreak](recipes/07-outbreak/) | Who may have been exposed, and when? | `timeline(freq="day")`, `spread` in time order, `changes` |
+| [08. Subway](recipes/08-subway/) | What is the fastest way? Which station is vital? | the weight, `distance`, `betweenness`, `components`, the `NoPath` error |
 
-Os dados são sintéticos, gerados para cada história. Os comportamentos que as
-receitas encontram (o anel de transferências, a festa no surto, a área nova nos
-e-mails) foram plantados de propósito, para você ver o tareco achando sozinho.
+The data is synthetic, made up for each story by [make_data.py](recipes/make_data.py).
+What the recipes find (the ring of transfers, the party in the outbreak, the new
+team in the e-mail) was planted on purpose, so you can watch tareco find it on
+its own.
 
-## Outros arquivos
+The sentences tareco writes come out in your computer's language (English or
+Portuguese); `tareco.set_language("en")` fixes it to English.
 
-- [quickstart.py](quickstart.py): um tour rápido, em inglês, com `friends.csv` e `people.csv`.
-- [databricks_check.py](databricks_check.py): notebook para importar no
-  Databricks e conferir se tudo funciona lá (`tareco.doctor(spark)` e um gráfico
-  por célula).
+## Other files
+
+- [quickstart.py](quickstart.py): a quick tour with `friends.csv` and `people.csv`.
+- [databricks_check.py](databricks_check.py): a notebook to import into
+  Databricks to check that everything works there (`tareco.doctor(spark)` and
+  one graph per cell).

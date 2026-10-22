@@ -1,4 +1,4 @@
-"""The recipes in examples/receitas run, find what they are about, and say it the same way every time."""
+"""The recipes in examples/recipes run, find what they are about, and say it the same way every time."""
 
 import contextlib
 import io
@@ -18,56 +18,58 @@ EXAMPLES = ROOT / "examples"
 
 # what each recipe is about: if one of these goes missing, the recipe stopped telling its story
 FINDS = {
-    "01-amigos/amigos.py": [
-        "Grupo 1: Ana, Bia, Caio, Duda",
-        "Iris é uma ponte entre grupos",
-        "Com quem Iris mais conversa: [('João', 35)",
+    "01-friends/friends.py": [
+        "Group 1: Ana, Bia, Caio, Duda",
+        "Iris is a bridge between groups",
+        "The strongest connection is Ana and Bia (42)",  # messages became the weight on its own
+        "Who Iris talks to most: [('João', 35)",
     ],
-    "02-transacoes/transacoes.py": [
-        "r1, r2, r3 e r4 formam um ciclo",
-        "x01 recebe de 30 nós, 30 deles não enviam para mais ninguém",
-        "Uma cadeia de 4 intermediários: x01 para x02 para y1 para y2 para y3 para exterior",
-        "31 nós novos apareceram em 2026-04",
-        "x01 apareceu em 2026-04 já com 30 conexões",
-        "y3 -> exterior",
+    "02-transfers/transfers.py": [
+        "r1, r2, r3 and r4 form a loop",
+        "x01 receives from 30 nodes, 30 of which send to nobody else",
+        "A chain of 4 intermediaries: x01 to x02 to y1 to y2 to y3 to abroad",
+        "31 new nodes showed up in 2026-04",
+        "x01 appeared in 2026-04 with 30 connections at once",
+        "A new group of 6 nodes formed in 2026-05",
+        "y3 -> abroad",
     ],
-    "03-suprimentos/suprimentos.py": [
-        "A rede entrega até 2040 unidades por semana",
-        "Sem a Fabrica SP, a rede perde 740 unidades",
-        "Mais barato de Fornecedor A até Loja 07 (custo 17)",
+    "03-supply-chain/supply_chain.py": [
+        "The network delivers up to 2040 units a week",
+        "Without Factory East, the network loses 740 units",
+        "Cheapest from Supplier A to Store 07 (cost 17)",
     ],
-    "04-compras/compras.py": [
-        "segmento: estudante em 97%", "segmento: fitness em 100%",
-        "segmento: churrasco em 100%", "segmento: familia em 100%",
-        "Quem compra fraldas também compra: biscoito, leite, lenco umedecido",
+    "04-shopping/shopping.py": [
+        "segment: student in 97%", "segment: fitness in 100%",
+        "segment: barbecue in 100%", "segment: family in 100%",
+        "Who buys diapers also buys: cookies, milk, wet wipes",
     ],
-    "05-emails/emails.py": [
-        "Financeiro    8 pessoas, 91% das conversas dentro da área",
-        "Paulo Mar2 é uma ponte entre grupos",
-        "Um grupo novo de 7 nós se formou em 2026-04",
-        "a notícia pode ter chegado a 58 pessoas",
+    "05-email/emails.py": [
+        "Finance       8 people, 91% of conversations inside",
+        "Paulo Mar2 is a bridge between groups",
+        "A new group of 7 nodes formed in 2026-04",
+        "the news could have reached 58 people",
     ],
-    "06-software/software.py": [
-        "Dependência circular: config -> cache -> config",
-        "Se 'utils' quebrar, 21 pacotes quebram junto",
+    "06-dependencies/dependencies.py": [
+        "Circular dependency: config -> cache -> config",
+        "If 'utils' breaks, 21 packages break with it",
     ],
-    "07-surto/surto.py": [
-        "158 pessoas podem ter sido expostas a partir de P017",
-        "P077 saltou para 42 conexões em 2026-05-10",
-        "Um grupo novo de 28 nós se formou em 2026-05-10",
+    "07-outbreak/outbreak.py": [
+        "158 people may have been exposed, starting from P017",
+        "P077 jumped to 42 connections in 2026-05-10",
+        "A new group of 28 nodes formed in 2026-05-10",
     ],
-    "08-metro/metro.py": [
-        "Aeroporto -> Vila Nova -> Centro -> Catedral -> Estadio -> Lagoa (28 minutos)",
-        "Estações por onde mais caminhos passam: Centro",
-        "Sem a Centro não há como ir do Aeroporto à Lagoa",
+    "08-subway/subway.py": [
+        "Airport -> New Town -> Central -> Cathedral -> Stadium -> Lake (28 minutes)",
+        "Stations most paths go through: Central",
+        "Without Central there is no way from Airport to Lake",
     ],
 }
 
 # noise that once crept into the output
 NOT = {
-    "04-compras/compras.py": ["n_produto", "conectados entre si"],
-    "05-emails/emails.py": ["area = ", "total de count", "se fundiram", "se dividiu"],
-    "07-surto/surto.py": ["nós novos apareceram"],
+    "04-shopping/shopping.py": ["n_product", "all connected to each other"],
+    "05-email/emails.py": ["department = ", "total count", "merged", "split"],
+    "07-outbreak/outbreak.py": ["new nodes showed up", "A new group of 5", "A new group of 6", "A new group of 7"],
 }
 
 
@@ -75,46 +77,63 @@ NOT = {
 def copy(tmp_path_factory):
     """The examples folder in a temporary place, so the pages the recipes save do not land in the repository."""
     where = tmp_path_factory.mktemp("examples") / "examples"
-    shutil.copytree(EXAMPLES, where, ignore=shutil.ignore_patterns("saida", "__pycache__"))
+    shutil.copytree(EXAMPLES, where, ignore=shutil.ignore_patterns("out", "__pycache__"))
     return where
 
 
 def run(path):
     out = io.StringIO()
+    i18n.set_language("en")
     try:
         with contextlib.redirect_stdout(out):
             runpy.run_path(str(path), run_name="__main__")
     finally:
-        i18n.set_language(None)  # the recipes switch to Portuguese
+        i18n.set_language(None)
     return out.getvalue()
 
 
 @pytest.mark.parametrize("recipe", sorted(FINDS))
 def test_recipe_tells_its_story(copy, recipe):
-    text = run(copy / "receitas" / recipe)
+    text = run(copy / "recipes" / recipe)
     for phrase in FINDS[recipe]:
         assert phrase in text, f"{recipe} no longer says: {phrase}\n\n{text}"
     for phrase in NOT.get(recipe, []):
         assert phrase not in text, f"{recipe} says: {phrase}"
-    pages = list((copy / "receitas" / recipe).parent.glob("saida/*.html"))
+    pages = list((copy / "recipes" / recipe).parent.glob("out/*.html"))
     assert pages and all(p.stat().st_size > 10_000 for p in pages)
 
 
 def test_every_recipe_has_a_readme_and_is_listed():
     index = (EXAMPLES / "README.md").read_text(encoding="utf-8")
-    folders = sorted(p for p in (EXAMPLES / "receitas").iterdir() if p.is_dir())
+    folders = sorted(p for p in (EXAMPLES / "recipes").iterdir() if p.is_dir() and p.name[0].isdigit())
     assert len(folders) == len(FINDS)
     for folder in folders:
         assert (folder / "README.md").exists(), folder.name
-        assert f"receitas/{folder.name}/" in index, folder.name
+        assert f"recipes/{folder.name}/" in index, folder.name
+
+
+def test_the_data_is_what_make_data_makes(tmp_path):
+    """make_data.py really is how the data was made (the Excel file needs openpyxl, so it is left out)."""
+    pytest.importorskip("openpyxl")
+    script = tmp_path / "make_data.py"
+    shutil.copy(EXAMPLES / "recipes" / "make_data.py", script)
+    done = subprocess.run([sys.executable, str(script)], capture_output=True, timeout=300)
+    assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+    made = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*.csv"))
+    assert len(made) == 8
+    for path in made:
+        # git may turn the line endings into the local ones
+        same = [p.read_bytes().replace(b"\r\n", b"\n") for p in (tmp_path / path, EXAMPLES / "recipes" / path)]
+        assert same[0] == same[1], path
 
 
 def test_same_output_whatever_the_hash_seed(copy):
     """Sets iterate in a different order in every Python process; the text must not depend on it."""
-    recipe = copy / "receitas" / "02-transacoes" / "transacoes.py"
+    recipe = copy / "recipes" / "02-transfers" / "transfers.py"
     outputs = []
     for seed in ("1", "2"):
-        env = dict(os.environ, PYTHONHASHSEED=seed, PYTHONPATH=str(ROOT), PYTHONIOENCODING="utf-8")
+        env = dict(os.environ, PYTHONHASHSEED=seed, PYTHONPATH=str(ROOT), PYTHONIOENCODING="utf-8",
+                   TARECO_LANG="en")
         done = subprocess.run([sys.executable, str(recipe)], env=env, capture_output=True, timeout=300)
         assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
         outputs.append(done.stdout.decode("utf-8").replace("\r\n", "\n"))

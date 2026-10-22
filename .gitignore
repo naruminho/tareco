@@ -9,4 +9,4 @@ venv/
 .ipynb_checkpoints/
 .DS_Store
 .preview/
-examples/**/saida/
+examples/**/out/

@@ -10,7 +10,7 @@ from .errors import TarecoError
 from .graph import Graph
 from .insights import Explanation, Finding, _median
 from .io import (MAX_ROWS, SOURCE_COLUMNS, TARGET_COLUMNS, _add_nodes_from, _missing, _pick_column,
-                 _resolve, iter_table)
+                 _resolve, guess_weight, iter_table)
 
 FREQS = ("day", "week", "month", "quarter", "year")
 MAX_AUTO_PERIODS = 24  # "auto" picks the finest unit that gives at most this many periods
@@ -28,7 +28,8 @@ def timeline(data, time, freq="auto", source=None, target=None, directed=False, 
                 dd/mm/yyyy or mm/dd/yyyy text, or plain numbers (steps, years).
     freq        "day", "week", "month", "quarter", "year", a number (bin size
                 for numeric times) or "auto" (a sensible number of periods).
-    weight      column to add up per connection (default: count events).
+    weight      column to add up per connection; by default an obvious one (amount,
+                value, or the only number column), otherwise each event counts 1.
     nodes       node attributes, like ``Graph(nodes=...)``.
     cumulative  each snapshot holds everything up to its period.
     dayfirst    for slash dates: True for dd/mm, False for mm/dd, None to infer.
@@ -41,17 +42,28 @@ def timeline(data, time, freq="auto", source=None, target=None, directed=False, 
     rest = [c for c in columns if c != time]
     s = _pick_column(rest, source, SOURCE_COLUMNS, "source")
     t = _pick_column(rest, target, TARGET_COLUMNS, "target", exclude=s)
-    raw = []
+    if weight is not None and weight not in columns:
+        raise TarecoError(f"no column {weight!r} for weight; columns are {columns}")
+    others = [c for c in rest if c not in (s, t)]
+    if weight is not None and weight not in others:
+        raise TarecoError(f"{weight!r} is the source, target or time column; it cannot be the weight")
+    kept = []
     for row in rows:
         u, v, when = row.get(s), row.get(t), row.get(time)
         if _missing(u) or _missing(v) or _missing(when):
             continue
-        w = row.get(weight) if weight else 1
-        if not isinstance(w, (int, float)) or isinstance(w, bool) or w != w:
-            w = 1 if not weight else 0
-        raw.append((when, u, v, float(w) if isinstance(w, float) else w))
-    if not raw:
+        kept.append((when, u, v, [row.get(c) for c in others]))
+    if not kept:
         raise TarecoError("no rows with source, target and time")
+    if weight is None:
+        weight = guess_weight(others, lambda c: (r[3][others.index(c)] for r in kept))
+    at = others.index(weight) if weight is not None else None
+    raw = []
+    for when, u, v, extra in kept:
+        w = extra[at] if at is not None else 1
+        if not isinstance(w, (int, float)) or isinstance(w, bool) or w != w:
+            w = 0
+        raw.append((when, u, v, float(w) if isinstance(w, float) else w))
     times = _parse_times([r[0] for r in raw], dayfirst)
     events = sorted(((tm, u, v, w) for tm, (_, u, v, w) in zip(times, raw)), key=lambda e: e[0])
     return Timeline(events, freq, directed, cumulative, nodes)
@@ -246,12 +258,24 @@ class Timeline:
 
         past = Graph()  # everything before the current period, undirected
         past_groups = []
+        home = {}  # node -> its group in the network as a whole
 
-        def together_before(c):
-            """Were most of these people already in one group, looking at all earlier periods?"""
+        def together_before(c, before, g):
+            """Is this a group people already had, rather than new ties between people from different groups?"""
+            old = c & before
+            if len(old) < 0.5 * len(c):
+                return False  # mostly newcomers: the group really is new
             if not past_groups:
                 past_groups.extend(past.communities() if past.edge_count else [])
-            return max((len(c & q) for q in past_groups), default=0) >= 0.5 * len(c)
+            if any(len(old & q) >= 0.5 * len(old) for q in past_groups):
+                return True
+            if not home:
+                home.update((x, i) for i, q in enumerate(self.union.communities()) for x in q)
+            # pieces of known groups joined by a chance meeting or two are not a new group: a new
+            # group needs several ties across the old groups, and at least half of its ties
+            ties = [(u, v) for u, v in g.edges if u in c and v in c]
+            crossing = sum(home[u] != home[v] for u, v in ties)
+            return crossing < max(3, 0.5 * len(ties))
 
         everyone = len(self.union)
         seen = set()
@@ -261,6 +285,7 @@ class Timeline:
             cur, cur_real = groups_of(g)
             # early on everything is new: wait until most nodes have shown up, and a fifth of the timeline
             settled = len(seen) >= 0.5 * everyone and p >= len(graphs) // 5
+            before = set(seen)
             seen |= set(degrees[p])
             if prev is not None and cur and settled:
                 pdeg = degrees[p - 1]
@@ -274,7 +299,7 @@ class Timeline:
                         a, b = (around(q, pdeg)[0] for q in parents[:2])
                         out.append((len(c), Finding("merge", i18n.text(lang, "merge", period=self.periods[p],
                                                                         a=name(a), b=name(b)), sorted(c, key=str), period=p)))
-                    elif best < 0.2 and cur_real and not together_before(c):
+                    elif best < 0.2 and cur_real and not together_before(c, before, g):
                         # a new group needs real groups after, and people who were not a group
                         # before; a known group that just did not show up last period is not news
                         names = i18n.join([name(x) for x in around(c, degrees[p])], lang)

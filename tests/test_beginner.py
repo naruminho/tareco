@@ -47,6 +47,19 @@ def test_weight_survives_copies_and_files(tmp_path):
     assert tc.read_json(str(path)).attrs["weight"] == "valor"
 
 
+def test_a_lone_number_column_is_the_weight():
+    rows = [{"from": "a", "to": "b", "messages": 3}, {"from": "b", "to": "c", "messages": 9},
+            {"from": "a", "to": "b", "messages": 2}]
+    g = tc.Graph(rows)
+    assert g.attrs["weight"] == "messages"  # not the count tareco added for the repeated pair
+    assert g.edges["a", "b"] == {"messages": 5, "count": 2}
+    assert tc.Graph([{"from": "a", "to": "b", "minutes": 4}]).attrs["weight"] == "minutes"
+    for name in ("year", "account_id", "zip_code", "date"):  # numbers, but not strengths
+        assert "weight" not in tc.Graph([{"from": "a", "to": "b", name: 2019}]).attrs
+    both = tc.Graph([{"from": "a", "to": "b", "messages": 3, "calls": 1}])
+    assert "weight" not in both.attrs  # two candidates: do not guess
+
+
 # --------------------------------------------------------------------- Excel
 
 def xlsx(path):

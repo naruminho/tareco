@@ -18,6 +18,9 @@ ID_COLUMNS = ("id", "node", "name", "key", "label", "nome", "conta", "account", 
 PAIRED = {"u": "v", "v": "u", "node1": "node2", "node2": "node1"}
 WEIGHT_COLUMNS = ("weight", "peso", "valor", "value", "amount", "quantidade", "qtd", "count", "total",
                   "montante", "quantity")
+NOT_WEIGHT = {"id", "ids", "key", "code", "codigo", "cod", "number", "numero", "index", "seq", "order", "rank",
+              "date", "data", "time", "timestamp", "ts", "year", "ano", "month", "mes", "week", "semana", "day",
+              "dia", "hour", "hora", "since", "until", "zip", "cep", "lat", "lon", "latitude", "longitude", "phone"}
 DECIMAL_COMMA = re.compile(r"^-?\d+,\d+$")
 MAX_ROWS = 1_000_000
 
@@ -48,12 +51,34 @@ def choose_weight(g, weight=None):
         return
     if "weight" in g.attrs or "weight" in names or not g.edge_count:
         return
-    numeric = [n for n in names if str(n).strip().lower() in WEIGHT_COLUMNS and all(
-        _is_number(d[n]) for _, _, d in g._edge_triples() if n in d)]
-    if len(numeric) > 1 and "count" in numeric:  # count may be the one tareco added when merging rows
-        numeric.remove("count")
-    if len(numeric) == 1:
-        g.attrs["weight"] = numeric[0]
+    found = guess_weight(names, lambda n: (d[n] for _, _, d in g._edge_triples() if n in d))
+    if found is not None:
+        g.attrs["weight"] = found
+
+
+def guess_weight(names, values):
+    """The column that is obviously the weight, or None. ``values(name)`` gives that column's values."""
+    numbers = []
+    for n in names:
+        present = [v for v in values(n) if not _missing(v)]
+        if present and all(_is_number(v) for v in present):
+            numbers.append(n)
+    plain = {n: str(n).strip().lower() for n in numbers}
+    named = [n for n in numbers if plain[n] in WEIGHT_COLUMNS and plain[n] != "count"]
+    others = [n for n in numbers if plain[n] not in WEIGHT_COLUMNS and not _labels_something(n)]
+    counts = [n for n in numbers if plain[n] == "count"]
+    # a column named like a weight wins; then the only other number (messages, minutes...);
+    # then count, which may be the one tareco added when merging repeated rows
+    for pick in (named, [] if named else others, counts):
+        if pick:
+            return pick[0] if len(pick) == 1 else None
+    return None
+
+
+def _labels_something(name):
+    """Numbers that name or date things rather than measure a connection: ids, years, codes."""
+    words = re.sub(r"([a-z])([A-Z])", r"_", str(name)).lower()
+    return bool(set(re.split(r"[^a-z0-9]+", words)) & NOT_WEIGHT)
 
 
 def _is_number(value):

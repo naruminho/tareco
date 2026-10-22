@@ -17,7 +17,8 @@ pip install tareco
 New to graphs? There are [eight worked recipes](examples/README.md), each a real
 question with its data and a commented script: friends, money transfers, a
 supply chain, shopping baskets, company e-mail, software dependencies, an
-outbreak and a subway map. Em português: [guia do iniciante](docs/guia.md).
+outbreak and a subway map. Never used graphs at all? Read the
+[beginner's guide](docs/guide.md).
 
 ## One line
 
@@ -32,10 +33,11 @@ That's it. Columns named `from`/`to`, `source`/`target`, `origem`/`destino`
 with a `tareco.GuessWarning` saying which. Every other column becomes an edge
 attribute. Nodes are colored by community and sized by importance automatically.
 
-- **Weight.** A column named `weight`, `amount`, `value`, `quantity`, `total`,
-  `count` (or `peso`, `valor`, `quantidade`...) becomes the strength of each edge:
-  line widths, the summary and `weight="weight"` in the algorithms use it. Name
-  another one with `weight="minutes"`.
+- **Weight.** A column named `weight`, `amount`, `value`, `quantity`, `total`
+  (or `peso`, `valor`, `quantidade`...) becomes the strength of each edge; failing
+  that, the only number column (`messages`, `minutes`; ids, years and dates do not
+  count). Line widths, the summary and `weight="weight"` in the algorithms use
+  it. Name another one with `weight="minutes"`.
 - **Repeated pairs add up.** Ten rows from ana to bia become one edge with the
   numbers summed and `count=10`, so a raw log of events works as is.
 
@@ -74,12 +76,13 @@ What this network shows
 - 16 nodes and 31 connections; on average each node connects to 3.9 others.
 - Everything is connected in a single network.
 - It forms 4 groups that mostly connect among themselves: 77% of the connections stay inside a group.
-- Group 1 (4 nodes, 25%): city: Recife in 75% (vs 19% overall). Key members: Duda, Ana and Caio.
-- Group 2 (4 nodes, 25%): city: São Paulo in 75% (vs 19% overall). Key members: Gabi, Heitor and Edu.
+- Group 1 (4 nodes, 25%): city: Recife in 75% (vs 19% overall). Key members: Bia, Caio and Ana.
+- Group 2 (4 nodes, 25%): city: São Paulo in 75% (vs 19% overall). Key members: Gabi, Fabi and Edu.
 - ...
-- The most important nodes are Iris, Mel and Lia.
+- The most important nodes are Gabi, Bia and João.
 - Iris is a bridge between groups: it links Group 3, Group 2 and Group 1.
 - Mel is a bridge between groups: it links Group 4, Group 3 and Group 1.
+- The strongest connection is Ana and Bia (42).
 ```
 
 `explain()` reports the facts worth acting on: separate parts and isolated
