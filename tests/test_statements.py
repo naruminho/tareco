@@ -163,3 +163,16 @@ def test_entities_tie_nodes_by_what_they_share():
     assert {e[0] for e in merged._events} >= {"E1"} and merged.rows("E1")
     with pytest.raises(tc.TarecoError, match="no identifiers"):
         tc.Graph([("a", "b")]).entities()
+
+
+def test_statement_edges_on_pandas_and_big_needs_spark():
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame(STATEMENT)
+    edges = tc.big.statement_edges(df, "account", "counterparty", "amount")
+    got = sorted(zip(edges["source"], edges["target"], edges["amount"]))
+    assert got == [("BOSS", "a1", 3000.0), ("a1", "a2", 50.0), ("a1", "a2", 100.0), ("a2", "SHOP", 40.0)]
+    assert list(edges.columns) == ["source", "target", "amount", "tid", "date"]
+    with pytest.raises(tc.TarecoError, match="works on Spark DataFrames"):
+        tc.big.components(df)
+    with pytest.raises(tc.TarecoError, match="no column 'acct'"):
+        tc.big.statement_edges(df, "acct", "counterparty", "amount")

@@ -23,7 +23,7 @@ g.similar_to(node) point at what deserves a look, and tareco.records(...) takes 
 back to the rows of your own tables.
 """
 
-from . import algorithms, generators
+from . import algorithms, big, generators
 from .errors import EdgeNotFound, HasCycle, NodeNotFound, NoPath, NotConnected, TarecoError
 from .generators import (community_graph, complete_graph, cycle_graph, grid_graph, path_graph,
                          random_graph, scale_free_graph, small_world_graph, star_graph)
@@ -93,7 +93,7 @@ __all__ = [
     "Graph", "show", "save", "explain", "report", "read_csv", "read_json", "read_excel", "project", "neighborhood",
     "timeline", "records", "compare",
     "Timeline", "set_language", "doctor",
-    "algorithms", "generators",
+    "algorithms", "big", "generators",
     "complete_graph", "path_graph", "cycle_graph", "star_graph", "grid_graph", "random_graph",
     "scale_free_graph", "small_world_graph", "community_graph",
     "TarecoError", "NodeNotFound", "EdgeNotFound", "NoPath", "NotConnected", "HasCycle", "GuessWarning",
