@@ -287,7 +287,10 @@ Worth a look
 ```
 
 `review.to_pandas()` and `review.to_spark(spark)` make it a table to save next to
-the data. `g.entities(via="device").graph()` merges accounts tied by shared
+the data. Next month, `g.review().compare(last_month)` says what changed: who is
+new in the list, whose score went up (with the reasons that are new), whose went
+down and who left it. `last_month` can be the earlier review or the table it was
+saved as. `g.entities(via="device").graph()` merges accounts tied by shared
 devices (or phones, addresses) into one node each, so every question runs per
 person; identifiers shared by too many accounts tie nobody.
 

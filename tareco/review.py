@@ -165,6 +165,109 @@ class Review(list):
         schema = StructType([StructField(c, kinds.get(c, StringType()), True) for c in columns])
         return spark.createDataFrame([[r[c] for c in columns] for r in plain], schema)
 
+    def compare(self, previous):
+        """What changed since an earlier work list: who is new, whose score went up or
+        down, and who left it.
+
+        ``previous`` is an earlier Review, or the table one was saved as: its
+        ``to_pandas()``, a CSV, a Spark table, a list of dicts. It needs the
+        ``node`` and ``score`` columns; with ``signals`` too, a node that went up
+        shows the reasons that are new.
+        """
+        before = _earlier(previous)
+        by_text = {str(k): k for k in before}
+        new, up, down, same = [], [], [], []
+        seen = set()
+        for r in self:
+            key = r.node if r.node in before else by_text.get(str(r.node))
+            if key is None:
+                new.append(r)
+                continue
+            seen.add(key)
+            score, kinds = before[key]
+            fresh = [text for kind, text in r.summary() if kinds is not None and kind not in kinds]
+            if r.score > score + 0.005:
+                up.append((r, score, fresh))
+            elif r.score < score - 0.005:
+                down.append((r, score, fresh))
+            else:
+                same.append(r)
+        gone = [(k, before[k][0]) for k in before if k not in seen]
+        return Changes(new, up, down, gone, same, self._lang, self._g, self._label)
+
+
+def _earlier(previous):
+    """``{node: (score, set of signal kinds or None)}`` from a Review or a saved table."""
+    if isinstance(previous, Review):
+        return {r.node: (r.score, {s.kind for s in r.signals}) for r in previous}
+    from .io import iter_table
+    columns, rows = iter_table(previous)
+    for c in ("node", "score"):
+        if rows and c not in columns:
+            raise TarecoError(f"an earlier review needs the column {c!r}; the table has {columns}")
+    out = {}
+    for r in rows:
+        kinds = r.get("signals")
+        kinds = None if kinds is None else {k.strip() for k in str(kinds).split(",") if k.strip()}
+        out[r["node"]] = (float(r["score"]), kinds)
+    return out
+
+
+class Changes:
+    """What changed between two work lists: ``new``, ``up`` and ``down`` (with the score
+    before), ``gone`` (nodes no longer in the list, with the score they had) and ``same``."""
+
+    def __init__(self, new, up, down, gone, same, lang="en", g=None, label=None):
+        self.new, self.up, self.down, self.gone, self.same = new, up, down, gone, same
+        self._lang, self._g, self._label = lang, g, label
+
+    @property
+    def nodes(self):
+        """What to look at now: the new ones, then the ones that went up."""
+        return [r.node for r in self.new] + [r.node for r, _, _ in self.up]
+
+    def __bool__(self):
+        return bool(self.new or self.up or self.down or self.gone)
+
+    def __repr__(self):
+        T = _Text(self._g, self._lang, self._label)
+        if not self:
+            return T("changes_none")
+        lines = [T("changes_title")]
+        if self.new:
+            lines.append(T("changes_new", k=T.num(len(self.new))))
+            for r in self.new:
+                lines.append("- " + T("review_item", name=T.name(r.node), score=T.num(r.score)))
+                lines += [f"   - {text}" for text in r.reasons[:3]]
+        for key, items in (("changes_up", self.up), ("changes_down", self.down)):
+            if items:
+                lines.append(T(key, k=T.num(len(items))))
+                for r, before, fresh in items:
+                    lines.append("- " + T("changes_moved", name=T.name(r.node), before=T.num(before),
+                                          after=T.num(r.score)))
+                    lines += [f"   - {text}" for text in fresh[:3]]
+        if self.gone:
+            lines.append(T("changes_gone", k=T.num(len(self.gone))))
+            lines += ["- " + T("changes_was", name=T.name(n), score=T.num(s)) for n, s in self.gone]
+        return "\n".join(lines)
+
+    def table(self):
+        """One dict per node that changed: ``node``, ``change``, ``score``, ``before`` and ``reasons``."""
+        out = [{"node": r.node, "change": "new", "score": r.score, "before": None, "reasons": " | ".join(r.reasons)}
+               for r in self.new]
+        for change, items in (("up", self.up), ("down", self.down)):
+            out += [{"node": r.node, "change": change, "score": r.score, "before": before,
+                     "reasons": " | ".join(fresh or r.reasons)} for r, before, fresh in items]
+        out += [{"node": n, "change": "gone", "score": None, "before": s, "reasons": ""} for n, s in self.gone]
+        return out
+
+    def to_pandas(self):
+        try:
+            import pandas as pd
+        except ImportError:
+            raise TarecoError("to_pandas needs pandas: pip install pandas") from None
+        return pd.DataFrame(self.table(), columns=["node", "change", "score", "before", "reasons"])
+
 
 def _id_column(rows):
     for r in rows[:50]:
