@@ -38,7 +38,7 @@ from .io import GuessWarning, read_csv, read_json
 from .tracing import records
 from .compare import compare
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 _LOAD_OPTIONS = ("directed", "nodes", "source", "target", "node_id", "max_rows", "weight", "kind", "keep",
                  "account", "counterparty", "amount", "source_kind", "target_kind")
