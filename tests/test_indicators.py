@@ -187,7 +187,7 @@ def test_review_ranks_the_planted_cases(bank):
     assert a017.ids == ["T009037", "T009038", "T009125", "T009193", "T009281", "T009282", "T009346", "T009430"]
     assert review.id_column == "transaction_id"
     text = repr(review)
-    assert text.startswith("Worth a look\n1. a023 (score ") and ", 5 rows behind it" in text
+    assert text.startswith("Worth a look\n1. a023 (score ") and ", 6 rows behind it" in text
     table = review.table()
     assert table[0]["node"] == "a023" and "pass_through" in table[0]["signals"] and table[0]["occupation"] == "cleaner"
     pd = pytest.importorskip("pandas")
@@ -196,3 +196,44 @@ def test_review_ranks_the_planted_cases(bank):
     assert repr(bank.review(top=1, lang="pt")).startswith("Vale um olhar\n1. ")
     quiet = tc.Graph([("a", "b"), ("b", "c")])
     assert len(quiet.review()) == 0
+
+
+# ------------------------------------------------------------- fast moves, trace
+
+def test_money_passed_on_fast():
+    people, rows = payments()
+    rows += [{"id": "in1", "from": "p01", "to": "mule", "amount": 30000, "date": day(30)},
+             {"id": "in2", "from": "p02", "to": "mule", "amount": 12000, "date": day(31)},
+             {"id": "out1", "from": "mule", "to": "far", "amount": 40000, "date": day(32)},
+             {"id": "sal", "from": "boss", "to": "p05", "amount": 30000, "date": day(40)}]
+    g = tc.Graph(rows, directed=True, keep=True)
+    found = g.fast_moves(within="3 days", lang="en")
+    assert [p.nodes[0] for p in found] == ["mule"]
+    assert "mule received 42,000 and passed on 40,000 within 2 days (2026-01-31 to 2026-02-02)" in found[0].text
+    assert sorted(found[0].rows.column("id")) == ["in1", "in2", "out1"]
+    assert not g.fast_moves(within="12 hours")
+
+
+def test_trace_follows_money_in_time_order():
+    rows = [{"from": "a", "to": "b", "amount": 100, "date": day(1)},
+            {"from": "b", "to": "c", "amount": 90, "date": day(3)},
+            {"from": "c", "to": "d", "amount": 80, "date": day(4)},
+            {"from": "b", "to": "e", "amount": 50, "date": day(0)},     # before a paid b: not from a
+            {"from": "c", "to": "f", "amount": 70, "date": day(60)}]    # too late
+    g = tc.Graph(rows, directed=True, keep=True)
+    reached = g.trace("a", within="30 days", lang="en")
+    assert {p.nodes[-1] for p in reached} == {"b", "c", "d"}
+    to_d = g.trace("a", "d", lang="en")
+    assert to_d[0].nodes == ["a", "b", "c", "d"] and len(to_d[0].rows) == 3
+    assert "a to b to c to d: 3 transfers from 2026-01-02 to 2026-01-05, up to 80 all the way." == to_d[0].text
+    assert not g.trace("a", "e") and not g.trace("a", "f")
+    t = tc.timeline(rows, time="date")
+    assert t.trace("a", "d")[0].nodes == ["a", "b", "c", "d"]
+
+
+def test_review_and_explain_see_fast_moves(bank):
+    assert bank.fast_moves(lang="en")[0].nodes[0] == "a023"
+    first = bank.review(lang="en")[0]
+    assert first.node == "a023" and first.signals[0].kind == "fast_pass"
+    assert "a181 to a023 to PI-ACC-8: 2 transfers from 2026-02-20 to 2026-02-23" in \
+        bank.trace("a181", "PI-ACC-8", lang="en")[0].text

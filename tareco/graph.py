@@ -696,6 +696,24 @@ class Graph:
         return splits(self, limit=limit, within=within, min_count=min_count, margin=margin, time=time,
                       lang=lang, label=label, top=top)
 
+    def fast_moves(self, within="3 days", share=0.8, time=None, lang=None, label=None, limit=10):
+        """Nodes that receive a large amount and pass most of it on to others within a short time.
+
+        >>> g.fast_moves(within="3 days")
+        """
+        from .indicators import fast_moves
+        return fast_moves(self, within=within, share=share, time=time, lang=lang, label=label, limit=limit)
+
+    def trace(self, source, target=None, within="30 days", hops=4, time=None, lang=None, label=None, limit=10):
+        """Where money from ``source`` could have gone, following transfers in time order (needs ``keep=``).
+
+        >>> g.trace("x01", "abroad")          # the paths from x01 to abroad
+        >>> g.trace("x01", within="7 days")   # everyone reached within a week
+        """
+        from .indicators import trace
+        return trace(self, source, target, within=within, hops=hops, time=time, lang=lang, label=label,
+                     limit=limit)
+
     def misfits(self, attrs=None, factor=10, min_neighbors=3, lang=None, label=None, limit=10):
         """Nodes unlike the ones they deal with: a far lower or higher number, a rare category.
 

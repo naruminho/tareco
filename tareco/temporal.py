@@ -357,6 +357,14 @@ class Timeline:
         findings += [f for f in whole.findings if f.kind in keep]
         return Explanation(findings, whole.profiles, lang)
 
+    def trace(self, source, target=None, within="30 days", hops=4, lang=None, label=None, limit=10):
+        """Paths from ``source`` that follow the events in time order (see ``Graph.trace``)."""
+        from .indicators import _Transfer, trace
+        items = [_Transfer(u, v, w, when, {"source": u, "target": v, "weight": w, "time": when})
+                 for when, u, v, w in self.events]
+        return trace(self.union, source, target, within=within, hops=hops, lang=lang, label=label,
+                     limit=limit, items=items)
+
     def spread(self, start, since=None):
         """When each node could first have been reached from ``start``, following events in order.
 

@@ -541,3 +541,130 @@ def flows(g, by, direction="to", weight="weight", lang=None, label=None):
     items.sort(key=lambda f: -f.amount)
     title = T("flows_title" if direction == "to" else "flows_title_from", by=by)
     return Flows(items, title, T.lang, direction, label, g)
+
+
+# ------------------------------------------------------------- fast moves, trace
+
+def fast_moves(g, within="3 days", share=0.8, time=None, lang=None, label=None, limit=10):
+    """Nodes that pass money on fast: they receive a large amount and send most of it to
+    others within a short time.
+
+    within  how fast ("3 days", "48 hours").
+    share   how much of what came in has to go out again (0.8: at least 80%).
+    Only amounts among the largest 10% of the network, and far above what the node
+    usually receives, count; money sent back to whoever sent it is not passing it on.
+    """
+    T = _Text(g, lang, label)
+    items = transfers(g, time, need_time=True)
+    span = parse_span(within)
+    floor = _quantile([t.amount for t in items], 0.9)
+    ins, outs = {}, {}
+    for t in items:
+        ins.setdefault(t.v, []).append(t)
+        outs.setdefault(t.u, []).append(t)
+    found = []
+    for node, got in ins.items():
+        sent = outs.get(node)
+        if not sent:
+            continue
+        got.sort(key=lambda t: t.when)
+        sent.sort(key=lambda t: t.when)
+        # with a history to compare, what came in has to be far above what usually comes in
+        usual = _median([t.amount for t in got]) if len(got) >= 5 else 0
+        best = None
+        for i, first in enumerate(got):
+            end = first.when + span
+            came = [t for t in got[i:] if t.when <= end]
+            senders = {t.u for t in came}
+            went = [t for t in sent if first.when <= t.when <= end and t.v not in senders]
+            inn, out = sum(t.amount for t in came), sum(t.amount for t in went)
+            if inn < floor or inn < 5 * usual or out < share * inn:
+                continue
+            if best is None or min(inn, out) > best[0]:
+                best = (min(inn, out), came, went, inn, out)
+        if best:
+            found.append((best[0], node, best))
+    found.sort(key=lambda f: (-f[0], str(f[1])))
+    out = Patterns()
+    for moved, node, (_, came, went, inn, gone) in found[:limit]:
+        first = min(t.when for t in came)
+        last = max(t.when for t in came + went)
+        text = T("fast_pass", name=T.name(node), inn=T.num(inn), out=T.num(gone),
+                 span=T.span(last - first) if last > first else T("span_same_day"),
+                 first=T.date(first), last=T.date(last))
+        others = list(dict.fromkeys([t.u for t in came] + [t.v for t in went]))
+        out.append(Pattern("fast_pass", [node] + others, moved,
+                           {"in": inn, "out": gone, "first": first, "last": last}, text, _rows(came + went)))
+    return out
+
+
+def trace_transfers(items, source, target=None, within="30 days", hops=4, budget=200_000):
+    """Paths of transfers that follow one another in time, starting at ``source``."""
+    if items and isinstance(items[0].when, (int, float)):
+        span = within if isinstance(within, (int, float)) else float(str(within).split()[0])
+    else:
+        span = parse_span(within)
+    by_sender = {}
+    for t in items:
+        by_sender.setdefault(t.u, []).append(t)
+    for sent in by_sender.values():
+        sent.sort(key=lambda t: t.when)
+    stack = [[t] for t in reversed(by_sender.get(source, []))]
+    found = []
+    steps = 0
+    while stack and steps < budget:
+        path = stack.pop()
+        steps += 1
+        node = path[-1].v
+        if target is None or node == target:
+            found.append(path)
+            if target is not None:
+                continue
+        if len(path) >= hops:
+            continue
+        on_path = {source} | {t.v for t in path}
+        start, last = path[0].when, path[-1].when
+        for t in reversed(by_sender.get(node, [])):
+            if t.when >= last and t.when - start <= span and t.v not in on_path:
+                stack.append(path + [t])
+    return found
+
+
+def trace(g, source, target=None, within="30 days", hops=4, time=None, lang=None, label=None, limit=10,
+          items=None):
+    """Where money from ``source`` could have gone, following transfers in time order.
+
+    target  one node: the paths that reach it, the most money all the way first.
+            None: every node reached, each with its earliest path.
+    within  how long from the first transfer to the last.
+    hops    longest path.
+    A path only counts when each transfer happens after the one before it.
+    """
+    T = _Text(g, lang, label)
+    if items is None:
+        items = transfers(g, time, need_time=True)
+    paths = trace_transfers(items, source, target, within, hops)
+    if target is not None:
+        best = {}
+        for p in paths:
+            key = tuple([source] + [t.v for t in p])
+            bottleneck = min(t.amount for t in p)
+            if key not in best or bottleneck > best[key][0]:
+                best[key] = (bottleneck, p)
+        chosen = sorted(best.values(), key=lambda b: (-b[0], len(b[1])))[:limit]
+    else:
+        first = {}
+        for p in paths:
+            node = p[-1].v
+            here = (p[-1].when, -min(t.amount for t in p))
+            if node not in first or here < (first[node][1][-1].when, -first[node][0]):
+                first[node] = (min(t.amount for t in p), p)
+        chosen = sorted(first.values(), key=lambda b: (b[1][-1].when, len(b[1])))[:limit]
+    out = Patterns()
+    sep = T("route_sep")
+    for bottleneck, p in chosen:
+        nodes = [source] + [t.v for t in p]
+        text = T("trace", route=sep.join(T.name(x) for x in nodes), k=T.num(len(p)), first=T.date(p[0].when),
+                 last=T.date(p[-1].when), amount=T.num(bottleneck))
+        out.append(Pattern("trace", nodes, bottleneck, {"first": p[0].when, "last": p[-1].when}, text, _rows(p)))
+    return out

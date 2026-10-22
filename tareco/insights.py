@@ -447,10 +447,10 @@ PATTERN_PRIORITY = ("cycle", "pass_through", "fan_in", "fan_out", "chain", "shar
 
 def _behavior_findings(g, lang, label):
     """Amounts piling under a limit, transfers far above the usual, nodes far unlike their neighbors."""
-    from .indicators import attribute_kinds, misfits, splits, unusual_amounts
+    from .indicators import attribute_kinds, fast_moves, misfits, splits, unusual_amounts
     out = []
     if g.attrs.get("kept"):
-        for look in (splits, unusual_amounts):
+        for look in (splits, fast_moves, unusual_amounts):
             try:
                 found = look(g, lang=lang, label=label)
             except TarecoError:

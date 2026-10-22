@@ -375,6 +375,8 @@ def _shared(ctx, limit, min_share=3):
         return []
     known = g.attrs.get("link_kinds") or {}
     plain = {k for k, v in known.items() if not v.get("directed")}
+    if not plain:
+        return []  # only links that do not flow (logins, addresses) make a thing shared; a shop is not
 
     def counts(x, y):
         if not plain:
