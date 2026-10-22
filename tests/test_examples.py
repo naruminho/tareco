@@ -76,6 +76,10 @@ FINDS = {
         "Most like a017\n- a142 (",
         "Sent to Palm Isles by: a023, a017, a142, a120",
         "Transactions to review: T009037, T009038",
+        "Nothing to fix in 15,467 rows.",
+        "Piles of 8 or more: a017\n",
+        "- a142, score 2.5 before, 8 now\n   - a142 sent 7 transfers just under 10,000",
+        "| first in the list: a023",
     ],
     "08-subway/subway.py": [
         "Airport -> New Town -> Central -> Cathedral -> Stadium -> Lake (28 minutes)",

@@ -129,6 +129,26 @@ The column that identifies the node is recognized by names like `id`, `name`,
 `account`, `customer`, `user`, `person`, `code`; otherwise the first column is
 used. To choose: `node_id="employee_number"`.
 
+**Check it first.** Real tables carry things that mislead a graph without any
+error: a placeholder like "N/A" or "0" in the id column ties thousands of
+unrelated rows to one fake node, the same id written two ways ("123" and 123,
+"ACME " and "acme") becomes two nodes, copied rows count twice.
+
+```python
+print(tareco.check("payments.csv"))
+```
+
+```
+3 things to look at in 12,040 rows
+- Rows with a placeholder in to ('N/A' and 'UNKNOWN'): 812. It ties unrelated rows to one fake node; leave them out with skip=[...].
+- Rows that are exact copies of another: 4. Repeated rows add up, so they count twice.
+- Ids written both as a number and as text (123): 1. Each becomes two different nodes.
+```
+
+`skip=["N/A", "UNKNOWN"]` leaves those ids out when loading, with every row that
+has them. A placeholder that ties many rows together also comes with a warning
+while loading (a `DataWarning`).
+
 ## Where the data can come from
 
 All of these work in `tareco.Graph(...)`, `tareco.show(...)` and the other functions:
@@ -157,6 +177,7 @@ tareco friends.csv --nodes people.csv --explain
 - **Drag** a node: it stays where you drop it. Right-click lets it go.
 - **Search** (the `/` key): type a name and press Enter.
 - **Insights**: the sentences of the summary. Click one to light up the nodes it talks about; with rows kept, the rows of your table behind it show up too.
+- **Worth a look** (the flag): the nodes something stands out about, the strongest first, as in `g.review()`. Click one to open it.
 - **Shortest path**: click two nodes and the path between them lights up.
 - **Legend**: one click hides a group, a double click shows only that group.
 - **Groups overview**: each group becomes a bubble; click one to open it.
@@ -326,13 +347,32 @@ g = tareco.Graph(statements, account="account", counterparty="counterparty",
 | Where the money from one account went, in time order | `g.trace("a181", "PI-ACC-8")` |
 | Several accounts that are probably one person | `g.entities(via="device")` |
 | All of it, per account, ranked: a work list | `g.review(watch=["a017"])` |
+| What changed since the last work list | `g.review().compare(last_list)` |
+| Stricter or looser limits, for every tool at once | `tareco.settings(split_count=5)` |
+| Stop now, pick it up tomorrow | `g.save("case.tareco")`, `tareco.load("case.tareco")` |
 
 `g.review()` is the place to start a day of work: it ranks the accounts by how
 many signals they have and how strong, gives one line per kind of signal and the
 ids of the transactions behind them. `review.to_pandas()` or
 `review.to_spark(spark)` turns it into a table to save next to the data.
 `g.entities(via="device").graph()` merges the accounts each person uses into one
-node, and every question then runs per person.
+node, and every question then runs per person. Next month,
+`g.review().compare(last_list)` says who is new in the list and whose score went
+up, with the reasons that are new; `last_list` can be the saved table.
+
+Every limit has a default (piles of 3, 10 times the usual amount...).
+`tareco.settings(...)` changes them for every tool at once, or only inside a
+`with tareco.settings(...):` block, and `print(tareco.settings())` lists them.
+
+The same work runs from the terminal:
+
+```bash
+tareco statements.csv --account account --counterparty counterparty --check
+tareco statements.csv --account account --counterparty counterparty -o case.tareco
+tareco case.tareco --review --limit 10000 -o list.csv
+tareco case.tareco --review --since list.csv
+tareco case.tareco --why a023
+```
 
 `keep=True` is what lets tareco look at single transfers and take you back to
 them. The limits and the lists are yours: tareco says what it sees, you decide
