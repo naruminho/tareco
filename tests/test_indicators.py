@@ -125,6 +125,15 @@ def test_near_skips_hubs_and_reports_the_same_kind(bank):
         flagged.near("zzz")
 
 
+def test_near_skips_shops_in_a_small_busy_network():
+    # every account buys from a dozen of 15 shops: the usual node is busy too, yet the shops are hubs
+    rng = random.Random(3)
+    rows = [{"from": f"a{i}", "to": shop} for i in range(30) for shop in rng.sample([f"s{k}" for k in range(15)], 12)]
+    rows += [{"from": "a0", "to": "dev1"}, {"from": "a5", "to": "dev1"}]
+    g = tc.Graph(rows, nodes=[{"id": f"a{i}", "kind": "account"} for i in range(30)])
+    assert [p.nodes[0] for p in g.near("a0", lang="en")] == ["a5"]
+
+
 def test_flows_by_an_attribute(bank):
     flows = bank.flows(by="counterparty_country", lang="en")
     assert [f.value for f in flows] == ["Northland", "Westland", "Palm Isles"]

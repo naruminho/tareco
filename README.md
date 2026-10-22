@@ -64,6 +64,16 @@ tareco orders.csv --directed --max-nodes 20000 -o orders.html
 tareco messages.csv --time sent_at --lang pt              # replay over time
 tareco messages.csv --around ana --hops 2                 # just the neighborhood of ana
 tareco friends.csv --nodes people.csv --report -o friends-report.html
+tareco transfers.csv --check                              # what in the table would mislead the graph
+```
+
+Investigations work from the terminal too:
+
+```bash
+tareco statements.csv --account account --counterparty counterparty -o case.tareco
+tareco case.tareco --review --limit 10000 --watch a017 -o list.csv   # the work list, as a table
+tareco case.tareco --review --since list.csv              # next month: what changed
+tareco case.tareco --why a023
 ```
 
 ## What the network shows

@@ -48,3 +48,57 @@ def test_cli_projects_two_sided_tables(tmp_path, capsys):
     assert main([str(rows), "--project", "cliente", "produto", "-o", str(out)]) == 0
     page = out.read_text(encoding="utf-8")
     assert '"counts":{"nodes":3,"edges":1}' in page
+
+
+def transfers_csv(tmp_path):
+    lines = ["tid,from,to,amount,date"]
+    lines += [f"T{k},p,q{k % 2},{9500 + k},2026-01-0{k + 1}" for k in range(6)]
+    lines += [f"S{k},c{k},shop{k % 3},{20 + k},2026-01-02" for k in range(30)]
+    path = tmp_path / "transfers.csv"
+    path.write_text(chr(10).join(lines), encoding="utf-8")
+    return path
+
+
+def test_cli_checks_a_table(tmp_path, capsys):
+    path = transfers_csv(tmp_path)
+    assert main([str(path), "--check"]) == 0
+    assert capsys.readouterr().out.startswith("Nothing to fix in 36 rows.")
+    bad = tmp_path / "bad.csv"
+    bad.write_text(chr(10).join(["from,to", "a,N/A", "b,N/A", "c,d"]), encoding="utf-8")
+    assert main([str(bad), "--check"]) == 1
+    assert "Rows with a placeholder in to ('N/A'): 2." in capsys.readouterr().out
+
+
+def test_cli_review_why_and_since(tmp_path, capsys):
+    path = transfers_csv(tmp_path)
+    assert main([str(path), "-d", "--review", "--limit", "10000"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("Worth a look\n1. p (score ") and "just under 10,000" in out
+    listed = tmp_path / "list.csv"
+    assert main([str(path), "-d", "--review", "--limit", "10000", "-o", str(listed)]) == 0
+    assert str(listed.resolve()) in capsys.readouterr().out
+    assert listed.read_text(encoding="utf-8").startswith("node,score,signals,reasons,rows,ids")
+    assert main([str(path), "-d", "--review", "--limit", "10000", "--since", str(listed)]) == 0
+    assert capsys.readouterr().out.strip() == "Nothing changed since the last review."
+    assert main([str(path), "-d", "--why", "p", "--lang", "pt"]) == 0
+    assert capsys.readouterr().out.startswith("Sobre p")
+    assert main([str(path), "-d", "--why", "nobody"]) == 1
+    assert "node 'nobody' is not in the graph" in capsys.readouterr().err
+    assert main([str(path), "-d", "--review", "-o", str(tmp_path / "list.html")]) == 1
+    assert "-o list.csv" in capsys.readouterr().err
+
+
+def test_cli_statements_and_case_files(tmp_path, capsys):
+    rows = ["id,account,date,counterparty,amount"]
+    rows += [f"T{k},acc1,2026-01-0{k + 1},acc{2 + k % 2},-{9500 + k}" for k in range(6)]
+    rows += [f"R{k},acc{2 + k % 2},2026-01-0{k + 1},acc1,{9500 + k}" for k in range(6)]
+    path = tmp_path / "statements.csv"
+    path.write_text(chr(10).join(rows), encoding="utf-8")
+    case = tmp_path / "case.tareco"
+    assert main([str(path), "--account", "account", "--counterparty", "counterparty", "--kind", "transfer",
+                 "-o", str(case)]) == 0
+    assert str(case.resolve()) in capsys.readouterr().out
+    assert main([str(case), "--summary"]) == 0
+    assert "edges               2" in capsys.readouterr().out   # each transfer counted once
+    assert main([str(case), "--review", "--limit", "10000"]) == 0
+    assert "acc1 sent 6 transfers just under 10,000" in capsys.readouterr().out

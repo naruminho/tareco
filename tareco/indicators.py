@@ -447,7 +447,9 @@ def near(g, targets, hops=None, lang=None, label=None, limit=10, kinds=None):
         raise TarecoError("none of the targets is in the graph")
     degree = {x: len(set(g._all_neighbors(x)) - {x}) for x in g}
     active = [d for d in degree.values() if d > 0]
-    hub = max(20, 5 * _median(active)) if active else 20
+    # far above the usual node, or touching a fifth of them (in small dense networks every
+    # account deals with dozens of shops, so the usual node is busy too)
+    hub = max(20, min(5 * _median(active), 0.2 * len(active))) if active else 20
     wanted = set(kinds) if kinds is not None else ({g._nodes[t].get("kind") for t in start})
     dist = {t: 0 for t in start}
     origin = {t: {t} for t in start}
