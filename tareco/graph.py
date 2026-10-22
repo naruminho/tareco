@@ -728,6 +728,14 @@ class Graph:
         from .investigate import why
         return why(self, node, watch=watch, lang=lang, label=label)
 
+    def review(self, watch=None, limit=None, within="7 days", top=50, lang=None, label=None):
+        """Every node something stands out about, ranked, with its reasons and the rows behind them.
+
+        >>> g.review(watch=["a017"]).to_pandas()     # a work list for whoever investigates
+        """
+        from .review import review
+        return review(self, watch=watch, limit=limit, within=within, top=top, lang=lang, label=label)
+
     def similar_to(self, nodes, n=10, lang=None, label=None):
         """The nodes that behave most like ``nodes`` (one or a few known cases), with the reasons.
 

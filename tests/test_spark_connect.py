@@ -65,3 +65,11 @@ def test_statements_and_records(spark, monkeypatch):
     monkeypatch.setattr(tracing, "JOIN_ABOVE", 0)
     both = tc.records(df, ["SHOP", "a1"], columns=["account", "counterparty"])
     assert sorted(r["tid"] for r in both.collect()) == ["T1", "T2", "T3"]
+
+
+def test_review_to_spark(spark):
+    rows = [{"tid": f"T{k}", "from": "p", "to": f"q{k % 2}", "amount": 9500 + k, "date": f"2026-01-0{k + 1}"}
+            for k in range(6)]
+    g = tc.Graph(rows, directed=True, keep=True)
+    first = g.review(limit=10_000).to_spark(spark).collect()[0]
+    assert first["node"] == "p" and "T0" in first["ids"]

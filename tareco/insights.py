@@ -98,16 +98,17 @@ class Profiles(list):
 
 
 class Finding:
-    """One plain-language statement, with the nodes it is about."""
+    """One plain-language statement, with the nodes it is about (and the rows behind it, if kept)."""
 
-    __slots__ = ("kind", "text", "nodes", "group", "period")
+    __slots__ = ("kind", "text", "nodes", "group", "period", "rows")
 
-    def __init__(self, kind, text, nodes=(), group=None, period=None):
+    def __init__(self, kind, text, nodes=(), group=None, period=None, rows=None):
         self.kind = kind
         self.text = text
         self.nodes = list(nodes)
         self.group = group
         self.period = period
+        self.rows = rows if rows is not None else []
 
     def to_dict(self):
         return {"kind": self.kind, "text": self.text, "nodes": self.nodes, "group": self.group,
@@ -454,7 +455,7 @@ def _behavior_findings(g, lang, label):
                 found = look(g, lang=lang, label=label)
             except TarecoError:
                 continue  # no dates, or no amounts
-            out += [Finding(p.kind, p.text, p.nodes) for p in found[:2]]
+            out += [Finding(p.kind, p.text, p.nodes, rows=p.rows) for p in found[:2]]
     numbers = [a for a, k in attribute_kinds(g).items() if k == "number"]
     if numbers:
         out += [Finding(p.kind, p.text, p.nodes)

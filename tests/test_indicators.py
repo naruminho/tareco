@@ -175,3 +175,24 @@ def test_everything_reads_in_portuguese_too(bank):
     assert repr(bank.flows(by="counterparty_country", lang="pt")).startswith("Para onde vai, por counterparty_country")
     assert repr(bank.similar_to("a017", n=1, lang="pt")).startswith("Mais parecidos com a017")
     assert "Ligações: 7.303 transfer e 342 uses." in str(bank.explain(lang="pt"))
+
+
+def test_review_ranks_the_planted_cases(bank):
+    review = bank.review(watch=["a017"], limit=10_000, lang="en")
+    assert set(review.nodes[:3]) == {"a023", "a142", "a017"}
+    first = review[0]
+    assert first.node == "a023" and any("passes almost all of it on" in r for r in first.reasons)
+    assert any(r.endswith("(and 4 more like it)") for r in first.reasons)
+    a017 = review[review.nodes.index("a017")]
+    assert a017.ids == ["T009037", "T009038", "T009125", "T009193", "T009281", "T009282", "T009346", "T009430"]
+    assert review.id_column == "transaction_id"
+    text = repr(review)
+    assert text.startswith("Worth a look\n1. a023 (score ") and ", 5 rows behind it" in text
+    table = review.table()
+    assert table[0]["node"] == "a023" and "pass_through" in table[0]["signals"] and table[0]["occupation"] == "cleaner"
+    pd = pytest.importorskip("pandas")
+    frame = review.to_pandas()
+    assert list(frame.columns[:6]) == ["node", "score", "signals", "reasons", "rows", "ids"]
+    assert repr(bank.review(top=1, lang="pt")).startswith("Vale um olhar\n1. ")
+    quiet = tc.Graph([("a", "b"), ("b", "c")])
+    assert len(quiet.review()) == 0
