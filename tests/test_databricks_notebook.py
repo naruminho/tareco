@@ -51,11 +51,14 @@ def test_notebook_runs_like_on_databricks(spark, monkeypatch, tmp_path):
     monkeypatch.setattr(sys.modules["__main__"], "displayHTML", shown.append, raising=False)
     monkeypatch.setattr("webbrowser.open", lambda url: pytest.fail("no browser on a cluster"))
     monkeypatch.chdir(tmp_path)
-    namespace = {"spark": spark, "dbutils": DBUtils(), "displayHTML": shown.append}
+    tables = []
+    namespace = {"spark": spark, "dbutils": DBUtils(), "displayHTML": shown.append,
+                 "display": lambda df: tables.append(df.collect())}
     for code in cells():
         exec(compile(code, NOTEBOOK, "exec"), namespace)
     assert namespace["report"].ok, repr(namespace["report"])
     assert len(shown) == 5  # four graphs and the report
+    assert len(tables) == 1 and tables[0][0]["node"] == "acc-1"  # the work list, as a Spark table
     for markup in shown:
         assert "<iframe srcdoc=" in markup and len(markup.encode()) <= 9e6
         assert all(ord(c) < 128 for c in markup)
