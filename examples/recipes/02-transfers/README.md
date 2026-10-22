@@ -62,7 +62,6 @@ What this network shows
 - employer has 13.6x more connections than a typical node (300 vs 22).
 - r1, r2, r3 and r4 form a loop: r1 to r2 to r3 to r4 to r1. Up to 92,732 can go all the way around.
 - x01 receives from 30 nodes, 30 of which send to nobody else, and sends to 2.
-- employer sends to 300 nodes but receives from none.
 - A chain of 4 intermediaries: x01 to x02 to y1 to y2 to y3 to abroad.
 - 5 nodes are all connected to each other: c043, c048, c046, c044 and employer.
 - The heaviest 10% of the connections carry 87% of the total amount.
@@ -77,8 +76,8 @@ The three planted behaviors show up on their own:
 | x01 receives from 30 nodes that send to nobody else | 30 new accounts each send one payment to x01 | many pass-through accounts pooling money into one |
 | chain x01, x02, y1, y2, y3, abroad | each account receives from one and passes almost all of it to the next | layers that put distance between the money and where it came from |
 
-What is **not** a problem shows up too: "employer sends to 300 nodes" is the
-payroll; the group of 5 all connected is friends paying each other back, plus
+What is **not** a problem shows up too: "employer has 13.6x more connections" is
+the payroll; the group of 5 all connected is friends paying each other back, plus
 the employer who pays all of them. **A pattern is a place to start looking, not
 a verdict.**
 

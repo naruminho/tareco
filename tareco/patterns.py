@@ -7,22 +7,30 @@ other flow.
 
 from . import i18n
 
-KINDS = ("cycle", "fan_in", "fan_out", "pass_through", "chain", "back_and_forth", "star", "clique")
+KINDS = ("cycle", "fan_in", "fan_out", "pass_through", "chain", "back_and_forth", "star", "clique", "shared")
+FLOWS = ("cycle", "fan_in", "fan_out", "pass_through", "chain", "back_and_forth")
 STEP_BUDGET = 2_000_000   # search steps for cycles and cliques, so big graphs stay fast
 
 
 class Pattern:
-    __slots__ = ("kind", "nodes", "score", "details", "text")
+    """A shape or behavior found: ``kind``, ``nodes``, ``score``, ``details``, ``text``, and
+    ``rows``, the rows of your table behind it when the graph keeps them."""
 
-    def __init__(self, kind, nodes, score, details, text):
+    __slots__ = ("kind", "nodes", "score", "details", "text", "rows")
+
+    def __init__(self, kind, nodes, score, details, text, rows=None):
         self.kind = kind
         self.nodes = nodes
         self.score = score
         self.details = details
         self.text = text
+        if rows is None:
+            from .tracing import Rows
+            rows = Rows()
+        self.rows = rows
 
     def to_dict(self):
-        return {k: getattr(self, k) for k in self.__slots__}
+        return {k: getattr(self, k) for k in self.__slots__ if k != "rows"}
 
     def __repr__(self):
         return self.text
@@ -33,6 +41,19 @@ class Patterns(list):
 
     def of(self, kind):
         return Patterns(p for p in self if p.kind == kind)
+
+    @property
+    def nodes(self):
+        """Every node the patterns talk about, the most telling first, without repeats."""
+        return list(dict.fromkeys(p.nodes[0] for p in self if p.nodes))
+
+    def rows(self):
+        """The rows of your table behind all of them (when the graph keeps rows)."""
+        from .tracing import Rows
+        out = Rows()
+        for p in self:
+            out.extend(p.rows)
+        return out
 
     def __repr__(self):
         return "\n".join(f"- {p.text}" for p in self) if self else "(no patterns)"
@@ -61,12 +82,14 @@ def find_patterns(g, kinds=None, lang=None, limit=10, weight="weight", max_cycle
     if unknown:
         from .errors import TarecoError
         raise TarecoError(f"unknown pattern kinds {unknown}; choose from {KINDS}")
-    ctx = _Context(g, lang, weight, label)
+    ctx = _Context(_flow_part(g), lang, weight, label)
     found = Patterns()
     for kind in wanted:
-        if kind in ("cycle", "fan_in", "fan_out", "pass_through", "chain", "back_and_forth") and not g.directed:
+        if kind in FLOWS and not g.directed:
             continue
-        if kind == "cycle":
+        if kind == "shared":
+            found += _shared(_Context(g, lang, weight, label), limit)
+        elif kind == "cycle":
             found += _cycles(ctx, max_cycle, limit)
         elif kind in ("fan_in", "fan_out", "pass_through"):
             found += _fans(ctx, kind, min_fan, limit)
@@ -79,6 +102,14 @@ def find_patterns(g, kinds=None, lang=None, limit=10, weight="weight", max_cycle
         else:
             found += _cliques(ctx, limit)
     return found
+
+
+def _flow_part(g):
+    """The links that carry a flow: with several kinds, the directed ones (transfers, not logins)."""
+    known = g.attrs.get("link_kinds") or {}
+    if not g.directed or all(v.get("directed") for v in known.values()):
+        return g
+    return g.only(None, *[k for k, v in known.items() if v.get("directed")])
 
 
 class _Context:
@@ -207,7 +238,10 @@ def _fans(ctx, kind, min_fan, limit):
             key = "pass_through_amount" if ctx.weighted else "pass_through"
             text = ctx.text(key, name=ctx.name(x), k_in=ctx.num(k_in), k_out=ctx.num(k_out),
                             got=ctx.num(got), gave=ctx.num(gave))
-        patterns.append(Pattern(kind, [x] + others, score, {"in": k_in, "out": k_out}, text))
+        details = {"in": k_in, "out": k_out}
+        if kind in ("fan_in", "fan_out"):
+            details["only"] = item[5]
+        patterns.append(Pattern(kind, [x] + others, score, details, text))
     return patterns
 
 
@@ -332,3 +366,43 @@ def _cliques(ctx, limit, min_size=4):
         out.append(Pattern("clique", c, len(c), {"size": len(c)}, text))
     return out
 
+
+def _shared(ctx, limit, min_share=3):
+    """Nodes of one kind shared by several nodes of another kind: one device, many accounts."""
+    from .io import _kinds_of
+    g = ctx.g
+    if not any(d.get("kind") is not None for d in g._nodes.values()):
+        return []
+    known = g.attrs.get("link_kinds") or {}
+    plain = {k for k, v in known.items() if not v.get("directed")}
+
+    def counts(x, y):
+        if not plain:
+            return True
+        d = g._succ[x].get(y) or g._succ[y].get(x) or {}
+        return bool(set(_kinds_of(d)) & plain)
+
+    flowing = set()
+    if plain and len(plain) < len(known):  # with flows (transfers), shared things are what does not flow
+        for u, v, d in g._edge_triples():
+            if not set(_kinds_of(d)) <= plain:
+                flowing.update((u, v))
+    found = []
+    for x, attrs in g._nodes.items():
+        own = attrs.get("kind")
+        if own is None or x in flowing:
+            continue
+        by_kind = {}
+        for y in g._all_neighbors(x):
+            other = g._nodes[y].get("kind")
+            if y != x and other is not None and other != own and counts(x, y):
+                by_kind.setdefault(other, []).append(y)
+        for other, members in by_kind.items():
+            if len(members) >= min_share:
+                found.append((len(members), x, own, other, members))
+    found.sort(key=lambda f: (-f[0], str(f[1])))
+    out = []
+    for k, x, own, other, members in found[:limit]:
+        text = ctx.text("shared", k=ctx.num(k), kind=other, name=ctx.name(x), own=own)
+        out.append(Pattern("shared", [x] + members, k, {"kind": own, "shared_by": other}, text))
+    return out

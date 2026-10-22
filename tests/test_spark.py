@@ -165,3 +165,17 @@ def test_spark_connect_dataframes_are_not_mistaken_for_other_things():
     g = tc.Graph(df)  # must not treat it as a networkx graph or a polars frame
     assert not g.directed and g.edge_count == 2
     assert tc.project(ConnectLikeDataFrame([Row(p="x", i=1), Row(p="y", i=1)])).has_edge("x", "y")
+
+
+def test_real_spark_statements_and_records(spark, monkeypatch):
+    from tareco import tracing
+    df = spark.createDataFrame(
+        [("T1", "a1", "a2", -100.0), ("T2", "a2", "a1", 100.0), ("T3", "a2", "SHOP", -40.0)],
+        "tid string, account string, counterparty string, amount double")
+    g = tc.Graph(df, account="account", counterparty="counterparty", keep=True)
+    assert set(g.edges) == {("a1", "a2"), ("a2", "SHOP")} and g.rows("SHOP").column("tid") == ["T3"]
+    found = tc.records(df, ["a1"], columns=["account"])
+    assert "DataFrame" in type(found).__name__ and [r["tid"] for r in found.collect()] == ["T1"]
+    monkeypatch.setattr(tracing, "JOIN_ABOVE", 0)  # the broadcast-join path
+    both = tc.records(df, ["SHOP", "a1"], columns=["account", "counterparty"])
+    assert sorted(r["tid"] for r in both.collect()) == ["T1", "T2", "T3"]

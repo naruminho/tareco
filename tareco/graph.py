@@ -85,9 +85,20 @@ class Graph:
     ``max_rows`` rows (aggregate them in Spark first, or pass ``max_rows=None``).
 
     ``weight`` names the column that says how strong each connection is (an
-    amount, a count). Without it, a single numeric column called weight,
-    peso, valor, value, amount, quantidade, qtd, count or total is used.
-    Every algorithm and the view then use it by default.
+    amount, a count). Without it, a numeric column called weight, amount,
+    value, quantity, total (or peso, valor, quantidade...) is used, or else the
+    only number column. Every algorithm and the view then use it by default.
+
+    Tables can say more:
+
+    kind          what these links are ("transfer"); tables of other kinds join
+                  with ``add_links``.
+    keep          True (or a list of columns) keeps the rows behind each link, for
+                  ``rows()`` and for looking at single transfers.
+    account, counterparty, amount
+                  read a bank statement: one row per entry, money out negative.
+    source_kind, target_kind
+                  the kinds of node at each end ("account", "device").
 
     >>> g = Graph([("ana", "bia"), ("bia", "caio", 2.5)])
     >>> g.shortest_path("ana", "caio")
@@ -95,13 +106,17 @@ class Graph:
     """
 
     def __init__(self, data=None, *, directed=None, nodes=None, source=None,
-                 target=None, node_id=None, weight=None, max_rows=1_000_000, **attrs):
+                 target=None, node_id=None, weight=None, max_rows=1_000_000, kind=None, keep=None,
+                 account=None, counterparty=None, amount=None, source_kind=None, target_kind=None,
+                 **attrs):
         self.attrs = dict(attrs)
         self._reset(bool(directed))
         if data is not None or nodes is not None:
             from .io import load_into
             load_into(self, data, directed=directed, nodes=nodes, source=source,
-                      target=target, node_id=node_id, max_rows=max_rows)
+                      target=target, node_id=node_id, max_rows=max_rows, kind=kind, keep=keep,
+                      account=account, counterparty=counterparty, amount=amount,
+                      source_kind=source_kind, target_kind=target_kind)
         from .io import choose_weight
         choose_weight(self, weight)
 
@@ -116,6 +131,19 @@ class Graph:
         self._succ = {}
         self._pred = {} if directed else self._succ
         self._edge_count = 0
+        self._events = []  # (u, v, kind, row): the rows behind the links, when kept
+
+    def _make_directed(self):
+        """Turn an undirected graph without links into a directed one, keeping its nodes."""
+        if self.directed:
+            return
+        if self._edge_count:
+            raise TarecoError("this graph already has links without direction; to add directed "
+                              "ones, start it with tareco.Graph(directed=True)")
+        nodes = self._nodes
+        self._reset(True)
+        for n, d in nodes.items():
+            self._add_node(n, d)
 
     # ---------------------------------------------------------------- building
 
@@ -172,6 +200,27 @@ class Graph:
             else:
                 raise TarecoError(f"cannot read edge {e!r}: use (u, v), (u, v, weight) or (u, v, {{attributes}})")
 
+    def add_links(self, data, source=None, target=None, *, kind=None, directed=None, keep=None,
+                  account=None, counterparty=None, amount=None, source_kind=None, target_kind=None,
+                  nodes=None, node_id=None, max_rows=1_000_000):
+        """Add one more table of links, usually of another kind, and return the graph.
+
+        >>> g = tareco.Graph(statements, account="account", counterparty="counterparty", kind="transfer")
+        >>> g.add_links(logins, source="account", target="device", kind="uses")
+
+        The node kinds come from the column names ("account", "device") unless
+        ``source_kind``/``target_kind`` say otherwise. Links between two different
+        kinds of node have no direction unless ``directed=True``; links between
+        nodes of one kind follow the graph. Ids of different kinds that clash get
+        a prefix ("device:123") and a warning.
+        """
+        from .io import add_links
+        add_links(self, data, source=source, target=target, directed=directed, nodes=nodes,
+                  node_id=node_id, max_rows=max_rows, kind=kind, keep=keep, account=account,
+                  counterparty=counterparty, amount=amount, source_kind=source_kind,
+                  target_kind=target_kind)
+        return self
+
     def remove_node(self, node):
         """Remove ``node`` and every edge touching it."""
         self._check(node)
@@ -194,6 +243,9 @@ class Graph:
         elif u != v:
             del self._succ[v][u]
         self._edge_count -= 1
+        if self._events:
+            pair = {(u, v)} if self.directed else {(u, v), (v, u)}
+            self._events = [e for e in self._events if (e[0], e[1]) not in pair]
 
     # ----------------------------------------------------------------- queries
 
@@ -316,7 +368,8 @@ class Graph:
         """Neighbors ignoring direction."""
         if not self.directed:
             return self._succ[node].keys()
-        return self._succ[node].keys() | self._pred[node].keys()
+        # a dict, not a set: the order must not change from one run to the next
+        return (self._succ[node] | self._pred[node]).keys()
 
     # -------------------------------------------------------------- transforms
 
@@ -326,6 +379,7 @@ class Graph:
             g._add_node(n, dict(d))
         for u, v, d in self._edge_triples():
             g._add_edge(u, v, dict(d))
+        g._events = list(self._events)
         return g
 
     def subgraph(self, nodes):
@@ -338,6 +392,7 @@ class Graph:
         for u, v, d in self._edge_triples():
             if u in keep_set and v in keep_set:
                 g._add_edge(u, v, dict(d))
+        g._events = [e for e in self._events if e[0] in keep_set and e[1] in keep_set]
         return g
 
     def ego(self, node, radius=1):
@@ -364,6 +419,7 @@ class Graph:
             g._add_node(n, dict(d))
         for u, v, d in self._edge_triples():
             g._add_edge(v, u, dict(d))
+        g._events = [(v, u, k, r) for u, v, k, r in self._events]
         return g
 
     def to_undirected(self):
@@ -372,6 +428,7 @@ class Graph:
             g._add_node(n, dict(d))
         for u, v, d in self._edge_triples():
             g._add_edge(u, v, dict(d))
+        g._events = list(self._events)
         return g
 
     def to_directed(self):
@@ -383,7 +440,66 @@ class Graph:
             g._add_edge(u, v, dict(d))
             if not self.directed:
                 g._add_edge(v, u, dict(d))
+        g._events = list(self._events)
         return g
+
+    # ------------------------------------------------------------------- kinds
+
+    def kinds(self):
+        """How many links and nodes of each kind: ``{"links": {...}, "nodes": {...}}``."""
+        from .io import _kinds_of
+        links, nodes = {}, {}
+        for _, _, d in self._edge_triples():
+            for k in _kinds_of(d):
+                links[k] = links.get(k, 0) + 1
+        for d in self._nodes.values():
+            k = d.get("kind")
+            if k is not None:
+                nodes[k] = nodes.get(k, 0) + 1
+        return {"links": links, "nodes": nodes}
+
+    def only(self, *kinds):
+        """A copy with just the links of these kinds and the nodes they touch.
+
+        ``g.only("transfer")`` leaves the logins out; ``None`` stands for links
+        loaded without a kind.
+        """
+        from .io import _kinds_of
+        wanted = set(kinds)
+        g = self._new(self.directed)
+        if "link_kinds" in g.attrs:
+            g.attrs["link_kinds"] = {k: v for k, v in g.attrs["link_kinds"].items() if k in wanted}
+        for u, v, d in self._edge_triples():
+            if wanted & (set(_kinds_of(d)) or {None}):
+                for x in (u, v):
+                    if x not in g._nodes:
+                        g._add_node(x, dict(self._nodes[x]))
+                g._add_edge(u, v, dict(d))
+        g._events = [e for e in self._events if e[2] in wanted]
+        return g
+
+    def rows(self, nodes=None, link=None, kind=None):
+        """The rows behind the links, as they were in your table (needs ``keep=`` when loading).
+
+        ``nodes`` (one or several) keeps the rows that touch them, ``link=(a, b)``
+        the rows behind one link, ``kind`` the rows of one kind of link.
+        ``.to_pandas()`` turns the result into a DataFrame.
+        """
+        from .tracing import Rows
+        if not self.attrs.get("kept"):
+            raise TarecoError("this graph does not keep the rows behind its links; load it with "
+                              "keep=True, or keep=[\"transaction_id\", ...] for some columns")
+        events = self._events
+        if nodes is not None:
+            wanted = set(nodes) if isinstance(nodes, (list, set, frozenset)) else {nodes}
+            events = [e for e in events if e[0] in wanted or e[1] in wanted]
+        if link is not None:
+            a, b = link
+            pairs = {(a, b)} if self.directed else {(a, b), (b, a)}
+            events = [e for e in events if (e[0], e[1]) in pairs]
+        if kind is not None:
+            events = [e for e in events if e[2] == kind]
+        return Rows(dict(e[3]) for e in events)
 
     # -------------------------------------------------------------- algorithms
 
@@ -533,14 +649,17 @@ class Graph:
         from .insights import profile
         return profile(self, groups=groups, attrs=attrs, top=top, lang=lang, label=label)
 
-    def project(self, nodes, method="count", min_shared=1, max_item_size=1000):
-        """Treat the graph as two-sided and link ``nodes`` that share neighbors.
+    def project(self, nodes, via=None, method="count", min_shared=1, max_item_size=1000):
+        """Link ``nodes`` that share neighbors, like customers who share products.
 
-        ``nodes`` is the side to keep (an iterable, or a predicate on
-        ``(node, attrs)``). See ``tareco.project`` for the methods.
+        ``nodes`` is the side to keep: a node kind ("account"), an iterable of
+        nodes, or a predicate on ``(node, attrs)``. ``via`` limits what they share
+        to one or more node kinds ("device"). See ``tareco.project`` for the methods.
+
+        >>> g.project("account", via="device")   # accounts linked by the devices they share
         """
         from .bipartite import project_graph
-        return project_graph(self, nodes, method=method, min_shared=min_shared,
+        return project_graph(self, nodes, via=via, method=method, min_shared=min_shared,
                              max_item_size=max_item_size)
 
     def patterns(self, kinds=None, lang=None, limit=10, weight="weight", max_cycle=4, label=None,
@@ -553,6 +672,69 @@ class Graph:
         from .patterns import find_patterns
         return find_patterns(self, kinds=kinds, lang=lang, limit=limit, weight=weight,
                              max_cycle=max_cycle, label=label, min_fan=min_fan)
+
+    def unusual_amounts(self, factor=10, min_history=5, time=None, lang=None, label=None, limit=10):
+        """Transfers far above what the sender usually sends (needs ``keep=``).
+
+        ``factor`` times the sender's usual amount, and among the largest 5% of
+        the network. Each result has the ``rows`` of your table behind it.
+        """
+        from .indicators import unusual_amounts
+        return unusual_amounts(self, factor=factor, min_history=min_history, time=time, lang=lang,
+                               label=label, limit=limit)
+
+    def splits(self, limit=None, within="7 days", min_count=3, margin=0.1, time=None, lang=None,
+               label=None, top=10):
+        """Many amounts just under a limit in a short time, by one sender or into one receiver.
+
+        >>> g.splits(limit=10_000, within="7 days")
+
+        Without ``limit``, amounts piling up just under any round number count.
+        Needs ``keep=`` and a date column. See ``tareco.indicators.splits``.
+        """
+        from .indicators import splits
+        return splits(self, limit=limit, within=within, min_count=min_count, margin=margin, time=time,
+                      lang=lang, label=label, top=top)
+
+    def misfits(self, attrs=None, factor=10, min_neighbors=3, lang=None, label=None, limit=10):
+        """Nodes unlike the ones they deal with: a far lower or higher number, a rare category.
+
+        >>> g.misfits("monthly_income")
+        """
+        from .indicators import misfits
+        return misfits(self, attrs=attrs, factor=factor, min_neighbors=min_neighbors, lang=lang,
+                       label=label, limit=limit)
+
+    def near(self, targets, hops=2, lang=None, label=None, limit=10, kinds=None):
+        """Nodes within ``hops`` steps of a list you give, and through whom (paths skip hubs).
+
+        >>> g.near(["a017", "a020"])          # or an attribute: g.near("flagged")
+        """
+        from .indicators import near
+        return near(self, targets, hops=hops, lang=lang, label=label, limit=limit, kinds=kinds)
+
+    def flows(self, by, direction="to", weight="weight", lang=None, label=None):
+        """How much of the flow goes to each value of an attribute (a country, a segment).
+
+        >>> g.flows(by="country")
+        """
+        from .indicators import flows
+        return flows(self, by, direction=direction, weight=weight, lang=lang, label=label)
+
+    def why(self, node, watch=None, lang=None, label=None):
+        """What stands out about one node, in plain words: its flows, group, patterns,
+        unusual amounts, what it shares with others and, with ``watch``, how close
+        it is to a list you give."""
+        from .investigate import why
+        return why(self, node, watch=watch, lang=lang, label=label)
+
+    def similar_to(self, nodes, n=10, lang=None, label=None):
+        """The nodes that behave most like ``nodes`` (one or a few known cases), with the reasons.
+
+        >>> g.similar_to("a017").nodes        # ids to look up in your own tables
+        """
+        from .investigate import similar_to
+        return similar_to(self, nodes, n=n, lang=lang, label=label)
 
     def summary(self):
         """Headline numbers about the graph."""

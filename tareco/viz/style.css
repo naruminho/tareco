@@ -215,6 +215,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .legend-item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .legend-item .count { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
 .legend-item.off { opacity: 0.4; }
+.legend-item .line { width: 14px; height: 3px; border-radius: 2px; flex: none; }
+.legend-item.off .line { background: var(--muted) !important; }
+.legend-title.links { margin-top: 10px; }
 .legend-item .note { display: block; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .findings { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }

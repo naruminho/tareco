@@ -256,7 +256,105 @@ def subway():
     write_csv(out / "links.csv", ["station_a", "station_b", "minutes", "line"], rows)
 
 
+def statements():
+    """Six months of bank statements, one row per entry, money out negative, plus who logs in from where.
+
+    Planted: two accounts splitting money into amounts just under 10,000 sent abroad, one
+    account sending 85,000 out of the blue, a low-income account moving executives' money
+    abroad, and one device shared by those accounts and one more.
+    """
+    rng = random.Random(21)
+    out = HERE / "09-statements"
+    jobs = [("cleaner", 30, 1500, 2500), ("clerk", 50, 2500, 4000), ("teacher", 40, 4000, 7000),
+            ("engineer", 40, 9000, 16000), ("doctor", 20, 18000, 30000), ("executive", 20, 60000, 150000)]
+    cities = ["Austin", "Boston", "Chicago", "Denver"]
+    customers, by_job = [], {}
+    i = 0
+    for job, count, lo, hi in jobs:
+        for _ in range(count):
+            i += 1
+            account = f"a{i:03d}"
+            income = int(round(rng.uniform(lo, hi), -1))
+            customers.append((account, job, income, rng.choice(cities)))
+            by_job.setdefault(job, []).append(account)
+    income = {c[0]: c[2] for c in customers}
+    job_of = {c[0]: c[1] for c in customers}
+    employers = {job: [f"EMPLOYER-{job[:3].upper()}-{k}" for k in (1, 2)] for job, *_ in jobs}
+    shops = [f"SHOP-{k:02d}" for k in range(1, 41)]
+    abroad_shops = ["SHOP-W1", "SHOP-W2"]
+    country = {**{s: "Northland" for s in shops}, **{s: "Westland" for s in abroad_shops}}
+    entries = []  # (date, account, counterparty, amount, counterparty country)
+
+    def move(date, sender, receiver, amount):
+        """One transfer as it shows on the statements of the bank's own accounts."""
+        amount = round(amount, 2)
+        if sender in income:
+            entries.append((date, sender, receiver, -amount, country.get(receiver, "Northland")))
+        if receiver in income:
+            entries.append((date, receiver, sender, amount, country.get(sender, "Northland")))
+
+    employer_of = {a: rng.choice(employers[job_of[a]]) for a in income}
+    special = {"a017", "a023", "a142"}
+    friends = []
+    for job, members in by_job.items():
+        pool = [a for a in members if a not in special]
+        friends += [pool[k:k + 5] for k in range(0, len(pool) - 2, 5)]
+    executives = by_job["executive"]
+    for m in range(1, 7):
+        for a, salary in income.items():
+            move(dt.date(2026, m, 5), employer_of[a], a, salary)
+            spend = 0.05 * salary + 40
+            for _ in range(rng.randint(8, 14)):
+                shop = rng.choice(shops) if rng.random() < 0.95 else rng.choice(abroad_shops)
+                move(day(rng, m), a, shop, rng.uniform(10, spend))
+        for group in friends:
+            for _ in range(2):
+                a, b = rng.sample(group, 2)
+                move(day(rng, m), a, b, rng.uniform(20, 0.03 * income[a] + 50))
+        for _ in range(6):  # executives lend each other money
+            a, b = rng.sample(executives, 2)
+            move(day(rng, m), a, b, rng.uniform(5000, 25000))
+    # one teacher sends 85,000 abroad, once
+    move(dt.date(2026, 3, 14), "a055", "ART-DEALER-W", 85000)
+    country["ART-DEALER-W"] = "Westland"
+    # two clerks send money abroad in amounts just under 10,000, a few days apart
+    for account, start, targets in (("a017", dt.date(2026, 4, 13), ["PI-ACC-1", "PI-ACC-2", "PI-ACC-3", "PI-ACC-4"]),
+                                    ("a142", dt.date(2026, 5, 18), ["PI-ACC-5", "PI-ACC-6", "PI-ACC-7"])):
+        for t in targets:
+            country[t] = "Palm Isles"
+        for k in range(8 if account == "a017" else 7):
+            move(start + dt.timedelta(days=rng.randint(0, 5)), account, targets[k % len(targets)],
+                 rng.uniform(9400, 9950))
+    # a cleaner receives large sums from executives and sends them abroad
+    country["PI-ACC-8"] = "Palm Isles"
+    for k, boss in enumerate(("a181", "a184", "a187", "a190", "a195")):
+        move(dt.date(2026, 2 + k, 20), boss, "a023", rng.uniform(30000, 45000))
+        move(dt.date(2026, 2 + k, 23), "a023", "PI-ACC-8", rng.uniform(28000, 42000))
+    # someone sends a gift to a relative in Palm Isles: not everything there is a problem
+    country["PI-ACC-9"] = "Palm Isles"
+    move(dt.date(2026, 6, 2), "a120", "PI-ACC-9", 300)
+    for k, (date, a, c, x, ctry) in enumerate(entries):  # countries known only now for the planted ones
+        entries[k] = (date, a, c, x, country.get(c, ctry))
+    entries.sort(key=lambda e: (e[0], e[1]))
+    write_csv(out / "statements.csv", ["transaction_id", "account", "date", "counterparty", "counterparty_country",
+                                       "amount"],
+              [(f"T{k + 1:06d}", a, d.isoformat(), c, ctry, x) for k, (d, a, c, x, ctry) in enumerate(entries)])
+    write_csv(out / "customers.csv", ["account", "occupation", "monthly_income", "city"], customers)
+    logins = []
+    accounts = list(income)
+    for k, a in enumerate(accounts):
+        logins.append((a, f"dev-{a}-phone"))
+        if rng.random() < 0.4:
+            logins.append((a, f"dev-{a}-laptop"))
+    for k in range(0, 60, 2):  # couples sharing a tablet
+        a, b = accounts[k + 1], accounts[k + 2]
+        if not {a, b} & special:
+            logins += [(a, f"dev-home-{k // 2 + 1}"), (b, f"dev-home-{k // 2 + 1}")]
+    logins += [(a, "dev-77") for a in ("a017", "a142", "a023", "a199")]
+    write_csv(out / "logins.csv", ["account", "device"], logins)
+
+
 if __name__ == "__main__":
-    for make in (transfers, supply_chain, shopping, email, dependencies, outbreak, subway):
+    for make in (transfers, supply_chain, shopping, email, dependencies, outbreak, subway, statements):
         make()
         print("made", make.__name__)

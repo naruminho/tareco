@@ -20,7 +20,8 @@ YMD = re.compile(r"^\s*(\d{4})[/.](\d{1,2})[/.](\d{1,2})(?:[ T](\d{1,2}):(\d{2})
 
 
 def timeline(data, time, freq="auto", source=None, target=None, directed=False, weight=None,
-             nodes=None, cumulative=False, dayfirst=None, max_rows=MAX_ROWS):
+             nodes=None, cumulative=False, dayfirst=None, max_rows=MAX_ROWS, account=None,
+             counterparty=None, amount=None):
     """A network that changes over time, built from a table of timed events.
 
     data        CSV path, pandas/polars/Spark DataFrame or rows; one row per event.
@@ -33,10 +34,20 @@ def timeline(data, time, freq="auto", source=None, target=None, directed=False, 
     nodes       node attributes, like ``Graph(nodes=...)``.
     cumulative  each snapshot holds everything up to its period.
     dayfirst    for slash dates: True for dd/mm, False for mm/dd, None to infer.
+    account, counterparty, amount
+                read a bank statement, as in ``Graph``: money out negative, each
+                transfer counted once even when both statements are in the table.
     """
     columns, rows = iter_table(data, max_rows)
     if not columns:
         raise TarecoError("the table is empty")
+    if account is not None or counterparty is not None:
+        from .io import _statement_links
+        links, _, amount = _statement_links([r for r in rows if r], columns, account, counterparty, amount)
+        rows = [{"source": u, "target": v, **attrs} for u, v, attrs, _, _, _ in links]
+        columns = ["source", "target"] + [c for c in columns if c not in (account, counterparty)]
+        source, target, directed = "source", "target", True
+        weight = amount if weight is None else weight
     if time not in columns:
         raise TarecoError(f"no column {time!r} for time; columns are {columns}")
     rest = [c for c in columns if c != time]

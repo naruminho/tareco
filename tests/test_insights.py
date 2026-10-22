@@ -151,7 +151,9 @@ def test_explain_hubs_and_flows():
         g.add_edge("source", f"t{i}")
     g.add_edge("sink", "source")
     text = str(g.explain())
-    assert "sink receives from 40 nodes, 40 of which send to nobody else" in text or "sink receives from 40 nodes but sends to 1." in text
+    # its senders also send elsewhere, like a shop's customers: everyday, so only patterns() has it
+    assert "sink receives from 40 nodes" not in text
+    assert "sink receives from 40 nodes but sends to 1." in repr(g.patterns(kinds=["fan_in"]))
     assert "source sends to 8 nodes, 8 of which hear from nobody else, and receives from 1." in text
     assert "sink has" in text and "more connections than a typical node" in text
     assert "of the links go both ways." in text

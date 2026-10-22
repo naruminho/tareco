@@ -212,3 +212,27 @@ def test_report_page(browser, tmp_path):
         p.settle(1000)
     finally:
         p.close()
+
+
+@pytest.mark.parametrize("renderer", ["canvas", "webgl"])
+def test_link_kinds_in_the_legend(browser, tmp_path, renderer):
+    rng = random.Random(3)
+    g = tc.Graph(directed=True)
+    g.add_links([{"from": f"a{i}", "to": f"a{rng.randrange(30)}", "amount": rng.randint(10, 500)}
+                 for i in range(30)], kind="transfer", directed=True)
+    g.add_links([{"account": f"a{i}", "device": f"d{i // 3}"} for i in range(30)],
+                source="account", target="device", kind="uses")
+    p = Page(browser, g.to_html(renderer=renderer, color="kind"), tmp_path)
+    try:
+        p.settle(800)
+        names = [k.text_content().rstrip("0123456789") for k in p.app.query_selector_all("button.link-kind")]
+        assert sorted(names) == ["transfer", "uses"]
+        uses = 'button.link-kind:has-text("uses")'
+        p.app.click(uses)
+        p.settle()
+        assert "off" in p.app.get_attribute(uses, "class")
+        p.app.click(uses)
+        p.settle()
+        assert "off" not in p.app.get_attribute(uses, "class")
+    finally:
+        p.close()

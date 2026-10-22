@@ -120,10 +120,11 @@ class Finding:
 class Explanation:
     """What a network shows. Print it, iterate its findings, or render it in a notebook."""
 
-    def __init__(self, findings, profiles, lang):
+    def __init__(self, findings, profiles, lang, title=None):
         self.findings = findings
         self.profiles = profiles
         self.lang = lang
+        self.title = title if title is not None else i18n.text(lang, "title")
 
     def __iter__(self):
         return iter(self.findings)
@@ -143,14 +144,14 @@ class Explanation:
                              for f in self.findings])
 
     def __str__(self):
-        lines = [i18n.text(self.lang, "title")]
+        lines = [self.title]
         lines += [f"- {f.text}" for f in self.findings]
         return "\n".join(lines)
 
     __repr__ = __str__
 
     def _repr_markdown_(self):
-        lines = [f"**{i18n.text(self.lang, 'title')}**", ""]
+        lines = [f"**{self.title}**", ""]
         lines += [f"- {f.text}" for f in self.findings]
         return "\n".join(lines)
 
@@ -194,11 +195,16 @@ def _describe_attributes(g, attrs, skip=()):
     names = attrs if attrs is not None else list(dict.fromkeys(k for n in nodes for k in g.nodes[n]))
     out = {}
     for name in names:
-        if name in skip:
+        if name in skip or name == "kind":
             continue
         values = [g.nodes[n].get(name) for n in nodes]
         present = [v for v in values if v is not None and not (isinstance(v, float) and v != v)]
-        if len(present) < max(3, 0.5 * len(nodes)):
+        # with several kinds of node, only the kinds that have the attribute count (accounts
+        # have an income, devices do not)
+        carriers = {g.nodes[n].get("kind") for n, v in zip(nodes, values)
+                    if v is not None and not (isinstance(v, float) and v != v)}
+        pool = len(nodes) if carriers == {None} else sum(1 for n in nodes if g.nodes[n].get("kind") in carriers)
+        if len(present) < max(3, 0.5 * pool):
             continue
         countish = str(name).lower().startswith(COUNT_PREFIXES)
         if all(_is_number(v) for v in present) and (
@@ -361,6 +367,12 @@ def explain(g, groups=None, lang=None, top=5, label=None, weight="weight",
     avg = sum(degree.values()) / n
     findings.append(Finding("overview", T("overview_directed" if g.directed else "overview",
                                           n=num(n), m=num(m), avg=num(avg))))
+    kinds = g.kinds()
+    if len(kinds["links"]) >= 2 or len(kinds["nodes"]) >= 2:
+        def listed(counts):
+            return i18n.join([f"{num(c)} {k}" for k, c in sorted(counts.items(), key=lambda kv: -kv[1])], lang)
+        findings.append(Finding("kinds", T("kinds", links=listed(kinds["links"]) or num(m),
+                                           nodes=listed(kinds["nodes"]) or num(n))))
 
     comps = g.components()
     isolated = [x for x in g if degree[x] == 0]
@@ -420,6 +432,7 @@ def explain(g, groups=None, lang=None, top=5, label=None, weight="weight",
     findings += _hubs(g, degree, lang, name)
     if m:
         findings += _pattern_findings(g, lang, label, weight)
+        findings += _behavior_findings(g, lang, label)
     if g.directed and m:
         findings += _reciprocity(g, lang)
     findings += _weights(g, weight, lang, name)
@@ -427,8 +440,26 @@ def explain(g, groups=None, lang=None, top=5, label=None, weight="weight",
 
 
 # most telling first; explain() keeps a few, patterns() has them all
-PATTERN_PRIORITY = ("cycle", "pass_through", "fan_in", "fan_out", "chain", "back_and_forth",
+PATTERN_PRIORITY = ("cycle", "pass_through", "fan_in", "fan_out", "chain", "shared", "back_and_forth",
                     "clique", "star")
+
+
+def _behavior_findings(g, lang, label):
+    """Amounts piling under a limit, transfers far above the usual, nodes far unlike their neighbors."""
+    from .indicators import attribute_kinds, misfits, splits, unusual_amounts
+    out = []
+    if g.attrs.get("kept"):
+        for look in (splits, unusual_amounts):
+            try:
+                found = look(g, lang=lang, label=label)
+            except TarecoError:
+                continue  # no dates, or no amounts
+            out += [Finding(p.kind, p.text, p.nodes) for p in found[:2]]
+    numbers = [a for a, k in attribute_kinds(g).items() if k == "number"]
+    if numbers:
+        out += [Finding(p.kind, p.text, p.nodes)
+                for p in misfits(g, attrs=numbers, factor=20, lang=lang, label=label, limit=2)]
+    return out
 
 
 def density(g):
@@ -459,6 +490,9 @@ def _pattern_findings(g, lang, label, weight, per_kind=2, total=6):
             same = kept
         if kind == "back_and_forth" and typical:
             same = [p for p in same if p.score >= 5 * typical]  # small change going back and forth is everyday
+        if kind in ("fan_in", "fan_out"):
+            from .investigate import _exclusive
+            same = [p for p in same if _exclusive(p)]  # a shop's customers or a payroll are everyday
         best = same[0].score if same else 0
         for p in same:
             if kind == "clique" and len(p.nodes) < 5:
@@ -492,16 +526,22 @@ def _brokers(g, group_of, names, degree, lang, name):
 
 
 def _hubs(g, degree, lang, name):
-    active = sorted(d for d in degree.values() if d > 0)
-    if len(active) < 10:
-        return []
-    median = _median(active)
-    cut = max(10, 5 * median)
-    hubs = sorted((x for x in g if degree[x] >= cut), key=lambda x: -degree[x])[:3]
-    return [Finding("hub", i18n.text(lang, "hub", name=name(x), times=i18n.number(degree[x] / median, lang),
-                                     d=i18n.number(degree[x], lang), median=i18n.number(median, lang)),
+    by_kind = {}
+    for x in g:  # a shop is compared with other shops' counterparts, not with devices
+        by_kind.setdefault(g.nodes[x].get("kind"), []).append(x)
+    found = []
+    for members in by_kind.values():
+        active = sorted(degree[x] for x in members if degree[x] > 0)
+        if len(active) < 10:
+            continue
+        median = _median(active)
+        cut = max(10, 5 * median)
+        found += [(degree[x], x, median) for x in members if degree[x] >= cut]
+    found.sort(key=lambda f: (-f[0], str(f[1])))
+    return [Finding("hub", i18n.text(lang, "hub", name=name(x), times=i18n.number(d / median, lang),
+                                     d=i18n.number(d, lang), median=i18n.number(median, lang)),
                     [x] + list(g._all_neighbors(x)))
-            for x in hubs]
+            for d, x, median in found[:3]]
 
 
 def _reciprocity(g, lang):

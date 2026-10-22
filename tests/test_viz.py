@@ -136,3 +136,16 @@ def test_show_opens_a_browser(monkeypatch):
     monkeypatch.setattr("webbrowser.open", opened.append)
     tc.show([("a", "b")], directed=True, title="x")
     assert len(opened) == 1 and opened[0].startswith("file://") and opened[0].endswith(".html")
+
+
+def test_link_kinds_reach_the_page():
+    g = tc.Graph([{"from": "a", "to": "b", "amount": 3}], kind="transfer", directed=True)
+    g.add_links([{"account": "a", "device": "d1"}, {"account": "b", "device": "d1"}],
+                source="account", target="device", kind="uses")
+    data = build_payload(g)
+    assert [k["label"] for k in data["config"]["linkKinds"]] == ["uses", "transfer"]
+    assert sorted(link["k"] for link in data["links"]) == [0, 0, 1]
+    webgl = payload_from_html(to_html(g, renderer="webgl"))
+    assert sorted(webgl["edges"]["k"]) == [0, 0, 1]
+    plain = build_payload(tc.path_graph(3))
+    assert plain["config"]["linkKinds"] is None and "k" not in plain["links"][0]

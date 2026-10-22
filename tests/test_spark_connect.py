@@ -51,3 +51,17 @@ def test_graph_neighborhood_and_export(spark, monkeypatch):
     assert {n: near.nodes[n]["hop"] for n in near} == {"a": 0, "b": 1, "x": 1, "c": 2}
     nodes, edges = near.to_spark(spark, metrics=["degree"])
     assert nodes.count() == 4 and "degree" in nodes.columns
+
+
+def test_statements_and_records(spark, monkeypatch):
+    from tareco import tracing
+    df = spark.createDataFrame(
+        [("T1", "a1", "a2", -100.0), ("T2", "a2", "a1", 100.0), ("T3", "a2", "SHOP", -40.0)],
+        "tid string, account string, counterparty string, amount double")
+    g = tc.Graph(df, account="account", counterparty="counterparty", keep=True)
+    assert set(g.edges) == {("a1", "a2"), ("a2", "SHOP")}
+    found = tc.records(df, ["a1"], columns=["account"])
+    assert [r["tid"] for r in found.collect()] == ["T1"]
+    monkeypatch.setattr(tracing, "JOIN_ABOVE", 0)
+    both = tc.records(df, ["SHOP", "a1"], columns=["account", "counterparty"])
+    assert sorted(r["tid"] for r in both.collect()) == ["T1", "T2", "T3"]

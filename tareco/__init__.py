@@ -15,6 +15,12 @@ Then go further with ``g = tareco.Graph(data)``: g.explain(), g.profile(),
 g.patterns(), g.communities(), g.pagerank(), g.shortest_path(a, b), and
 tareco.timeline(...), tareco.project(...), tareco.neighborhood(...) for time,
 two-sided tables and huge tables. tareco.doctor() checks your environment.
+
+Money flows: Graph(statements, account=..., counterparty=..., keep=True) reads
+bank statements; g.add_links(...) adds other kinds of links (devices, addresses);
+g.splits(), g.unusual_amounts(), g.misfits(), g.near(), g.flows(), g.why(node) and
+g.similar_to(node) point at what deserves a look, and tareco.records(...) takes you
+back to the rows of your own tables.
 """
 
 from . import algorithms, generators
@@ -29,10 +35,12 @@ from .graph import Graph
 from .i18n import set_language
 from .excel import read_excel
 from .io import GuessWarning, read_csv, read_json
+from .tracing import records
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
-_LOAD_OPTIONS = ("directed", "nodes", "source", "target", "node_id", "max_rows", "weight")
+_LOAD_OPTIONS = ("directed", "nodes", "source", "target", "node_id", "max_rows", "weight", "kind", "keep",
+                 "account", "counterparty", "amount", "source_kind", "target_kind")
 
 
 def _split(options):
@@ -81,7 +89,8 @@ def _graph(data, options):
 
 
 __all__ = [
-    "Graph", "show", "save", "explain", "report", "read_csv", "read_json", "read_excel", "project", "neighborhood", "timeline",
+    "Graph", "show", "save", "explain", "report", "read_csv", "read_json", "read_excel", "project", "neighborhood",
+    "timeline", "records",
     "Timeline", "set_language", "doctor",
     "algorithms", "generators",
     "complete_graph", "path_graph", "cycle_graph", "star_graph", "grid_graph", "random_graph",

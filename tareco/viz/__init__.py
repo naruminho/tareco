@@ -26,6 +26,7 @@ from ..io import json_default
 PALETTE = ["#6366f1", "#f43f5e", "#10b981", "#f59e0b", "#06b6d4", "#a855f7",
            "#84cc16", "#ec4899", "#14b8a6", "#f97316", "#3b82f6", "#eab308"]
 GRADIENT = ["#3b82f6", "#8b5cf6", "#ec4899", "#f97316", "#facc15"]
+LINK_PALETTE = ["#94a3b8", "#f59e0b", "#22c55e", "#e879f9", "#38bdf8", "#f87171", "#a3e635", "#fb923c"]
 MISSING_COLOR = "#94a3b8"
 METRICS = ("pagerank", "degree", "betweenness", "closeness", "clustering", "core",
            "community", "component")
@@ -305,6 +306,24 @@ def _edge_width_attr(g, edge_width, triples):
     return edge_width
 
 
+def _link_kinds(triples, g=None):
+    """``(legend items, kind index per triple)`` when the links come in two or more kinds."""
+    from ..io import _kinds_of
+    firsts = [(_kinds_of(d) or (None,))[0] for _, _, d in triples]
+    counts = {}
+    for k in firsts:
+        counts[k] = counts.get(k, 0) + 1
+    if len(counts) < 2:
+        return None, None
+    order = sorted(counts, key=lambda k: -counts[k])
+    slot = {k: i for i, k in enumerate(order)}
+    known = (g.attrs.get("link_kinds") or {}) if g is not None else {}
+    items = [{"label": "" if k is None else str(k), "color": LINK_PALETTE[i % len(LINK_PALETTE)],
+              "count": counts[k], "directed": known.get(k, {}).get("directed", True)}
+             for i, k in enumerate(order)]
+    return items, [slot[k] for k in firsts]
+
+
 def _config(g, nodes, triples, title, theme, legend, size, **extra):
     config = {
         "title": title if title is not None else g.attrs.get("title", ""),
@@ -341,6 +360,7 @@ def build_payload(g, nodes=None, triples=None, metric=None, color=None, size=Non
 
     index = {n: i for i, n in enumerate(nodes)}
     pairs = {(u, v) for u, v, _ in triples} if g.directed else set()
+    link_kinds, kind_of = _link_kinds(triples, g)
     out_nodes = []
     for i, n in enumerate(nodes):
         attrs = g.nodes[n]
@@ -354,18 +374,20 @@ def build_payload(g, nodes=None, triples=None, metric=None, color=None, size=Non
             "metrics": {i18n.metric_name(k, lang): v[n] for k, v in shown.items()},
         })
     out_links = []
-    for (u, v, d), w in zip(triples, widths):
+    for i, ((u, v, d), w) in enumerate(zip(triples, widths)):
         curve = 0.6 if u == v else 0.18 if (v, u) in pairs else 0.0
         link = {"source": index[u], "target": index[v], "w": w, "curve": curve,
                 "attrs": {k: x for k, x in d.items() if k != "periods"}}
         if time:
             link["p"] = d.get("periods", [])
+        if kind_of:
+            link["k"] = kind_of[i]
         out_links.append(link)
 
     return {
         "config": _localize(_config(g, nodes, triples, title, theme, legend, size, renderer="canvas",
                                     dim=dim, particles=bool(particles), lang=lang, insights=findings,
-                                    time=time),
+                                    time=time, linkKinds=link_kinds),
                             lang),
         "nodes": out_nodes,
         "links": out_links,
@@ -417,6 +439,7 @@ def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, si
     columns = list(dict.fromkeys(k for n in nodes for k in g.nodes[n]))[:MAX_ATTR_COLUMNS]
     edge_width = _edge_width_attr(g, edge_width, triples)
     plain = [(u, v, d) for u, v, d in triples if u != v]  # sigma draws no self-loops
+    link_kinds, kind_of = _link_kinds(plain, g)
     widths = _scale([_number(d.get(edge_width)) if edge_width else None for _, _, d in plain],
                     0.5, 4.0, None) if edge_width else None
     flat = []
@@ -435,7 +458,7 @@ def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, si
                           groupTitle=group_title, lang=lang, insights=findings, time=time,
                           start="overview" if (len(nodes) > OVERVIEW_START[0]
                                                or len(plain) > OVERVIEW_START[1]) else "nodes",
-                          groupName=i18n.metric_name(group_title, lang)), lang),
+                          groupName=i18n.metric_name(group_title, lang), linkKinds=link_kinds), lang),
         "nodes": {
             "label": [_label(n, g.nodes[n], label) for n in nodes],
             "colors": palette,
@@ -448,7 +471,8 @@ def build_webgl_payload(g, nodes=None, triples=None, metric=None, color=None, si
             "metrics": {i18n.metric_name(k, lang): [_compact(v[n]) for n in nodes] for k, v in shown.items()},
             "attrs": {c: [g.nodes[n].get(c) for n in nodes] for c in columns},
         },
-        "edges": {"e": flat, "w": widths, "p": [d.get("periods", []) for _, _, d in plain] if time else None},
+        "edges": {"e": flat, "w": widths, "p": [d.get("periods", []) for _, _, d in plain] if time else None,
+                  "k": kind_of},
         "groups": {
             "label": [grp_["label"] for grp_ in groups],
             "key": [grp_.get("key") for grp_ in groups],

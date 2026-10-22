@@ -55,6 +55,10 @@
     return String(v);
   }
   const color = (i) => N.colors[N.c[i]];
+  function hexAlpha(hex, alpha) {
+    const h = hex.replace("#", "");
+    return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${alpha.toFixed(3)})`;
+  }
   function withAlpha(css, alpha) {
     const m = css.match(/[\d.]+/g);
     return m && m.length >= 3 ? `rgba(${m[0]},${m[1]},${m[2]},${alpha.toFixed(3)})` : css;
@@ -117,9 +121,13 @@
     pathStart: null,
     path: null,
     hidden: new Set(),
+    hiddenKinds: new Set(),
     spot: null,
     labels: true,
   };
+  const linkKinds = cfg.linkKinds || null;
+  const kindHidden = (e) => linkKinds !== null && state.hiddenKinds.has(E.k[e]);
+  let kindAlpha = 0.3;
   let graph = null, renderer = null, layout = null, focus = null;
   let viewIdx = null;      // local position -> global node index (node views)
   let inView = null;       // Uint8Array: is global node i in the current view
@@ -188,10 +196,13 @@
       ledges = [];
       for (let e = 0; e < m; e++) if (inView[E.e[2 * e]] && inView[E.e[2 * e + 1]]) ledges.push(e);
       edgeColor = withAlpha(C.edge, edgeAlpha(ledges.length));
+      kindAlpha = Math.min(0.7, edgeAlpha(ledges.length) * 2);
       const pairs = [];
       for (const e of ledges) {
         const s = E.e[2 * e], t = E.e[2 * e + 1];
-        graph.addEdgeWithKey("e" + e, String(s), String(t), { size: edgeSize ? edgeSize[e] : 0.6 });
+        const plainKind = linkKinds && E.k[e] >= 0 && !linkKinds[E.k[e]].directed;
+        graph.addEdgeWithKey("e" + e, String(s), String(t), plainKind && cfg.directed
+          ? { size: edgeSize ? edgeSize[e] : 0.6, type: "line" } : { size: edgeSize ? edgeSize[e] : 0.6 });
         pairs.push(local[s], local[t]);
       }
       ledges = pairs;
@@ -294,6 +305,7 @@
   }
   function edgeReducer(key, data) {
     if (period !== null && key[0] === "e" && !activeEdge(Number(key.slice(1)))) return { ...data, hidden: true };
+    if (linkKinds && key[0] === "e" && kindHidden(Number(key.slice(1)))) return { ...data, hidden: true };
     if (focus) {
       if (focus.edges.has(key)) return { ...data, color: focus.color, size: Math.max(1.4, data.size * 1.8), zIndex: 1 };
       // faded, not hidden: hiding would need a full re-index on every hover
@@ -301,6 +313,10 @@
     }
     // colors come from here, not from edge attributes, so a theme change is just a redraw
     if (data.share !== undefined) return { ...data, color: withAlpha(C.edge, 0.03 + 0.6 * data.share) };
+    if (linkKinds && key[0] === "e") {
+      const k = E.k[Number(key.slice(1))];
+      if (k >= 0) return { ...data, color: hexAlpha(linkKinds[k].color, kindAlpha) };
+    }
     return { ...data, color: edgeColor };
   }
   function computeFocus() {
@@ -491,10 +507,12 @@
   function findPath(a, b) {
     const prev = new Map([[a, null]]);
     const queue = [a];
-    const next = cfg.directed ? (k) => graph.outNeighbors(k) : (k) => graph.neighbors(k);
+    const edgesOf = cfg.directed ? (k) => graph.outEdges(k) : (k) => graph.edges(k);
     for (let h = 0; h < queue.length && !prev.has(b); h++) {
       const u = queue[h];
-      for (const v of next(u)) {
+      for (const e of edgesOf(u)) {
+        if (linkKinds && kindHidden(Number(e.slice(1)))) continue;
+        const v = graph.opposite(u, e);
         if (!prev.has(v) && !hiddenNode(graph.getNodeAttributes(v))) { prev.set(v, u); queue.push(v); }
       }
     }
@@ -748,6 +766,13 @@
     if (cfg.size) {
       html += `<div class="legend-size"><svg viewBox="0 0 26 14"><circle cx="4" cy="9" r="2.5"/><circle cx="11.5" cy="8" r="4"/><circle cx="20.5" cy="7" r="5.5"/></svg>${esc(cfg.size)}</div>`;
     }
+    if (linkKinds && state.view && state.view.kind !== "overview") {
+      html += `<div class="legend-title links">${T.linkKinds}</div>`;
+      html += linkKinds.map((it, k) => {
+        const name = it.label ? esc(it.label) : `<span class="none">${T.none}</span>`;
+        return `<button class="legend-item link-kind${state.hiddenKinds.has(k) ? " off" : ""}" data-lk="${k}"><span class="line" style="background:${it.color}"></span><span class="name">${name}</span><span class="count">${fmt(it.count)}</span></button>`;
+      }).join("");
+    }
     box.innerHTML = html;
     box.hidden = !html;
   }
@@ -760,13 +785,21 @@
     const b = e.target.closest("button");
     if (!b) return;
     if (b.dataset.more) { legendAll = !legendAll; renderLegend(); return; }
+    if (b.dataset.lk !== undefined) {
+      const lk = Number(b.dataset.lk);
+      if (state.hiddenKinds.has(lk)) state.hiddenKinds.delete(lk); else state.hiddenKinds.add(lk);
+      if (state.path) clearAll();
+      update(true);
+      renderLegend();
+      return;
+    }
     const k = Number(b.dataset.k);
     if (state.hidden.has(k)) state.hidden.delete(k); else state.hidden.add(k);
     refreshVisibility();
   });
   $("legend").addEventListener("dblclick", (e) => {
     const b = e.target.closest(".legend-item");
-    if (!b) return;
+    if (!b || b.dataset.lk !== undefined) return;
     const k = Number(b.dataset.k);
     const keys = legend.items.map((_, j) => j);
     const solo = keys.every((j) => (j === k) !== state.hidden.has(j));

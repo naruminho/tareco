@@ -12,6 +12,8 @@ This guide starts from zero. If you can open a CSV in Python, you can use tareco
 - [The summary in words](#the-summary-in-words)
 - [Over time](#over-time)
 - [Two-sided data](#two-sided-data)
+- [Several kinds of links](#several-kinds-of-links)
+- [Money and investigations](#money-and-investigations)
 - [Huge tables, Spark and Databricks](#huge-tables-spark-and-databricks)
 - [When something goes wrong](#when-something-goes-wrong)
 - [Glossary](#glossary)
@@ -266,6 +268,49 @@ customers = tareco.project(purchases, nodes="customer", via="product", method="n
 `method="newman"` makes products everybody buys count for little. See
 [recipe 04](../examples/recipes/04-shopping/).
 
+## Several kinds of links
+
+Real data mixes things: accounts and the devices they log in from, people and
+their addresses. Load each table as links of its own kind:
+
+```python
+g = tareco.Graph(transfers, kind="transfer", directed=True)
+g.add_links(logins, source="account", target="device", kind="uses")
+g.kinds()                    # how many links and nodes of each kind
+g.only("transfer")           # just one kind
+```
+
+The kind of each node comes from the column name (`account`, `device`). A login
+has no direction and carries no money, so it does not count as a flow, but it
+still ties accounts together: "4 account nodes share dev-77 (device)".
+
+## Money and investigations
+
+A bank statement has one row per entry and money out negative. Tell tareco which
+columns are the two sides:
+
+```python
+g = tareco.Graph(statements, account="account", counterparty="counterparty",
+                 kind="transfer", keep=True)
+```
+
+| You want to know | Use |
+| --- | --- |
+| Many amounts just under a limit, in a few days | `g.splits(limit=10_000, within="7 days")` |
+| Amounts far above what the account usually sends | `g.unusual_amounts()` |
+| Where the money goes (by country, by segment) | `g.flows(by="country")` |
+| Who does not fit with the people they deal with | `g.misfits("income")` |
+| Who is close to accounts you already know | `g.near(["a017"])` |
+| Everything about one account | `g.why("a023")` |
+| Others that behave like a known case | `g.similar_to("a017")` |
+| The transactions behind a finding | `finding.rows`, `g.rows("a017")` |
+| The same accounts in your own table | `tareco.records(table, ids, columns=["account"])` |
+
+`keep=True` is what lets tareco look at single transfers and take you back to
+them. The limits and the lists are yours: tareco says what it sees, you decide
+what is a problem. [Recipe 09](../examples/recipes/09-statements/) walks through
+all of it.
+
 ## Huge tables, Spark and Databricks
 
 - tareco reads a Spark DataFrame directly: `tareco.Graph(spark.table("t"))`. The
@@ -319,6 +364,10 @@ Save it as `.xlsx` in Excel, or read it with pandas.
 **The sentences are in Portuguese**
 Your computer is set to Portuguese. `tareco.set_language("en")`, or the
 environment variable `TARECO_LANG=en`.
+
+**"this needs the single rows behind each link; load the graph with keep=True"**
+`splits`, `unusual_amounts` and `rows` look at single transfers. Load the graph
+with `keep=True`.
 
 **The page got heavy**
 `g.show(max_nodes=5000)` shows only the most important nodes. Huge graphs open

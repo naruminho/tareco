@@ -14,10 +14,10 @@ the view is a single self-contained HTML file that works offline.
 pip install tareco
 ```
 
-New to graphs? There are [eight worked recipes](examples/README.md), each a real
+New to graphs? There are [nine worked recipes](examples/README.md), each a real
 question with its data and a commented script: friends, money transfers, a
 supply chain, shopping baskets, company e-mail, software dependencies, an
-outbreak and a subway map. Never used graphs at all? Read the
+outbreak, a subway map and bank statements. Never used graphs at all? Read the
 [beginner's guide](docs/guide.md).
 
 ## One line
@@ -214,6 +214,72 @@ changing numbers are summed (`amount_total`), so groups can be profiled right aw
 - `attrs=customers_df` brings a table of customer attributes along.
 - `g.project(nodes)` does the same for a graph that already holds both sides.
 
+## Several kinds of links
+
+Real models mix things: accounts, devices, addresses; transfers, logins,
+ownership. Each table joins the graph as links of its own kind:
+
+```python
+g = tareco.Graph(transfers, kind="transfer", directed=True)
+g.add_links(logins, source="account", target="device", kind="uses")
+g.kinds()                            # {'links': {'transfer': 7303, 'uses': 342}, 'nodes': {...}}
+g.only("transfer")                   # just the money
+g.project("account", via="device")   # accounts linked by the devices they share
+```
+
+- Node kinds come from the column names (`account`, `device`), or from
+  `source_kind=`/`target_kind=`. `g.show(color="kind")` colors by them.
+- Links between two different kinds of node (an account and its device) have no
+  direction unless you say so; flow analyses (loops, fan-ins, chains, amounts)
+  only follow the directed kinds.
+- Ids that clash across kinds get a prefix (`device:123`) and a warning.
+- In the view, each kind of link has its own color, and the legend hides or
+  shows each one.
+
+## Money, statements and investigations
+
+```python
+g = tareco.Graph(statements, account="account", counterparty="counterparty",
+                 kind="transfer", keep=True)
+g.splits(limit=10_000, within="7 days")   # many amounts just under a limit
+g.unusual_amounts()                       # far above what the account usually sends
+g.flows(by="counterparty_country")        # where the money goes
+g.misfits("monthly_income")               # unlike the accounts it deals with
+g.near(["a017"])                          # close to a list you give
+g.why("a023")                             # one account, in plain words
+g.similar_to("a017")                      # others that behave like a known case
+```
+
+```
+- a017 sent 8 transfers just under 10,000 within 5 days (2026-04-13 to 2026-04-18), to 4 receivers, 9,434 to 9,901 each.
+- a055 sent 85,000 to ART-DEALER-W on 2026-03-14, 819x what it usually sends (104).
+- a023 has monthly_income 2,060, 67x lower than the median of the 5 nodes it deals with (137,780).
+- a142 is 2 steps from a017, through dev-77 (device).
+Most like a017
+- a142 (0.26): sends to nodes that hear from nobody else; piles amounts just under a round limit; ...
+```
+
+- `account=` and `counterparty=` read a bank statement: one row per entry, money
+  out negative. A transfer between two customers shows on both statements and is
+  counted once.
+- Behaviors are named in plain network terms; the limits, time windows and lists
+  to watch come from you. A pile under a limit only counts when the amounts
+  gather just under it (a payroll paying every size of salary is not a pile);
+  closeness never goes through hubs (everybody is two steps from a supermarket).
+- With rows kept, `explain()` adds the strongest of these on its own.
+
+**Back to your records.** `keep=True` (or `keep=["transaction_id", ...]`) keeps
+the rows behind every link:
+
+```python
+g.rows("a017")                                   # every row about an account
+g.splits(limit=10_000)[0].rows.to_pandas()       # the rows behind one finding
+tareco.records(spark.table("statements"), g.similar_to("a017").nodes, columns=["account"])
+```
+
+`tareco.records` looks up any list of ids in the original table and returns it
+in the table's own format; on Spark the filter runs in the cluster.
+
 ## The view
 
 - **Hover** a node to light up its neighborhood; **click** it for a side panel
@@ -368,6 +434,14 @@ g.reverse(), g.to_undirected(), g.copy()
 | How much can flow, and the bottleneck | `g.max_flow(a, b, capacity="weight")` (`.value`, `.flows`, `.cut`) |
 | Alternative routes | `g.k_shortest_paths(a, b, k=3, weight=None)` |
 | Shapes worth a look | `g.patterns()` |
+| Amounts just under a limit | `g.splits(limit=None, within="7 days")` |
+| Amounts far above the usual | `g.unusual_amounts(factor=10)` |
+| Unlike the nodes it deals with | `g.misfits(attrs=None, factor=10)` |
+| Close to a list | `g.near(targets, hops=2)` |
+| Where the flow goes | `g.flows(by)` |
+| One node, in words | `g.why(node, watch=None)` |
+| Behaves like a known case | `g.similar_to(nodes, n=10)` |
+| The rows behind it | `g.rows(nodes)`, `tareco.records(table, nodes)` |
 | Order of tasks | `g.topological_sort()`, `g.has_cycle()`, `g.find_cycle()` (one loop, any length) |
 | Size of the world | `g.diameter()` |
 | Walk it | `g.bfs(a)`, `g.dfs(a)` |

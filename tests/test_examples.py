@@ -58,6 +58,19 @@ FINDS = {
         "P077 jumped to 42 connections in 2026-05-10",
         "A new group of 28 nodes formed in 2026-05-10",
     ],
+    "09-statements/statements.py": [
+        "Links: 7,303 transfer and 342 uses.",
+        "4 account nodes share dev-77 (device).",
+        "a017 sent 8 transfers just under 10,000 within 5 days",
+        "a142 sent 7 transfers just under 10,000 within 3 days",
+        "a055 sent 85,000 to ART-DEALER-W on 2026-03-14",
+        "a023 has occupation cleaner, but 100% of the 5 nodes it deals with have executive.",
+        "a142 is 2 steps from a017, through dev-77 (device).",
+        "It shares dev-77 (device) with a017, a142 and a199.",
+        "Most like a017\n- a142 (",
+        "Sent to Palm Isles by: a023, a017, a142, a120",
+        "Transactions to review: T009037, T009038",
+    ],
     "08-subway/subway.py": [
         "Airport -> New Town -> Central -> Cathedral -> Stadium -> Lake (28 minutes)",
         "Stations most paths go through: Central",
@@ -70,6 +83,7 @@ NOT = {
     "04-shopping/shopping.py": ["n_product", "all connected to each other"],
     "05-email/emails.py": ["department = ", "total count", "merged", "split"],
     "07-outbreak/outbreak.py": ["new nodes showed up", "A new group of 5", "A new group of 6", "A new group of 7"],
+    "09-statements/statements.py": ["SHOP-04 has", "receives from 171 nodes", "and and", "a185 ("],
 }
 
 
@@ -120,7 +134,7 @@ def test_the_data_is_what_make_data_makes(tmp_path):
     done = subprocess.run([sys.executable, str(script)], capture_output=True, timeout=300)
     assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
     made = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*.csv"))
-    assert len(made) == 8
+    assert len(made) == 11
     for path in made:
         # git may turn the line endings into the local ones
         same = [p.read_bytes().replace(b"\r\n", b"\n") for p in (tmp_path / path, EXAMPLES / "recipes" / path)]
@@ -129,12 +143,13 @@ def test_the_data_is_what_make_data_makes(tmp_path):
 
 def test_same_output_whatever_the_hash_seed(copy):
     """Sets iterate in a different order in every Python process; the text must not depend on it."""
-    recipe = copy / "recipes" / "02-transfers" / "transfers.py"
     outputs = []
-    for seed in ("1", "2"):
+    for seed, recipe in (("1", "02-transfers/transfers.py"), ("2", "02-transfers/transfers.py"),
+                         ("1", "09-statements/statements.py"), ("2", "09-statements/statements.py")):
+        recipe = copy / "recipes" / recipe
         env = dict(os.environ, PYTHONHASHSEED=seed, PYTHONPATH=str(ROOT), PYTHONIOENCODING="utf-8",
                    TARECO_LANG="en")
         done = subprocess.run([sys.executable, str(recipe)], env=env, capture_output=True, timeout=300)
         assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
         outputs.append(done.stdout.decode("utf-8").replace("\r\n", "\n"))
-    assert outputs[0] == outputs[1]
+    assert outputs[0] == outputs[1] and outputs[2] == outputs[3]

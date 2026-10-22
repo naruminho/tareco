@@ -111,19 +111,26 @@ def project(data, nodes=None, via=None, method="count", min_shared=1, max_item_s
     return g
 
 
-def project_graph(g, nodes, method="count", min_shared=1, max_item_size=1000):
+def project_graph(g, nodes, via=None, method="count", min_shared=1, max_item_size=1000):
     """``Graph.project``: keep ``nodes`` and link them through their shared neighbors."""
     if method not in METHODS:
         raise TarecoError(f"method must be one of {METHODS}")
     if callable(nodes):
         side = [n for n, attrs in g.nodes.items() if nodes(n, attrs)]
+    elif isinstance(nodes, str):
+        side = [n for n, attrs in g.nodes.items() if attrs.get("kind") == nodes]
+        if not side:
+            raise TarecoError(f"no nodes of kind {nodes!r}; the kinds are {sorted(g.kinds()['nodes'])}")
     else:
         side = [n for n in dict.fromkeys(nodes) if n in g]
+    shared = None if via is None else ({via} if isinstance(via, str) else set(via))
     keep = set(side)
     order = {n: i for i, n in enumerate(side)}
     items = {}
     for item in g:
         if item in keep:
+            continue
+        if shared is not None and g.nodes[item].get("kind") not in shared:
             continue
         members = [n for n in g._all_neighbors(item) if n in keep]
         if members:

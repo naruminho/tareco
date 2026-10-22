@@ -35,6 +35,7 @@ function tarecoText(lang) {
       allPeriods: "All periods",
       play: "Play",
       pause: "Pause",
+      linkKinds: "Links",
     },
     pt: {
       locale: "pt-BR",
@@ -69,6 +70,7 @@ function tarecoText(lang) {
       allPeriods: "Todos os per\u00edodos",
       play: "Reproduzir",
       pause: "Pausar",
+      linkKinds: "Liga\u00e7\u00f5es",
     },
   };
   const T = all[lang] || all.en;

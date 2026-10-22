@@ -121,10 +121,13 @@
     pathStart: null,
     path: null,
     hidden: new Set(),
+    hiddenKinds: new Set(),
     labels: true,
     frozen: false,
     spot: null,
   };
+  const linkKinds = cfg.linkKinds || null;
+  const kindHidden = (l) => linkKinds !== null && state.hiddenKinds.has(l.k);
   let focus = null;
 
   function computeFocus() {
@@ -153,7 +156,7 @@
     .nodeLabel(nodeTip)
     .linkLabel(linkTip)
     .nodeVisibility(visible)
-    .linkVisibility((l) => { const [a, b] = ends(l); return visible(a) && visible(b) && activeLink(l); })
+    .linkVisibility((l) => { const [a, b] = ends(l); return visible(a) && visible(b) && activeLink(l) && !kindHidden(l); })
     .linkCurvature((l) => l.curve)
     .linkColor(linkColor)
     .linkWidth(linkWidth)
@@ -168,7 +171,8 @@
     .cooldownTime(20000);
 
   if (cfg.directed) {
-    fg.linkDirectionalArrowLength((l) => (is3D ? 3 : 3.5) + l.w)
+    // logins and other links without direction get no arrow, even in a directed graph
+    fg.linkDirectionalArrowLength((l) => (linkKinds && l.k >= 0 && !linkKinds[l.k].directed ? 0 : (is3D ? 3 : 3.5) + l.w))
       .linkDirectionalArrowRelPos(1)
       .linkDirectionalArrowColor(linkColor);
   }
@@ -210,7 +214,7 @@
   addEventListener("resize", () => fg.width(innerWidth).height(innerHeight));
 
   function linkColor(l) {
-    if (!focus) return C.edge;
+    if (!focus) return linkKinds && l.k >= 0 ? fade(linkKinds[l.k].color, 0.6) : C.edge;
     if (!focus.links.has(l)) return C["edge-faint"];
     if (state.path || !focus.center) return C.accent;
     return fade(focus.center.color, 0.85);
@@ -362,7 +366,7 @@
     for (let i = 0; i < queue.length && !prev.has(b); i++) {
       const u = queue[i];
       for (const [v, l] of u.out) {
-        if (!prev.has(v) && visible(v)) { prev.set(v, [u, l]); queue.push(v); }
+        if (!prev.has(v) && visible(v) && !kindHidden(l)) { prev.set(v, [u, l]); queue.push(v); }
       }
     }
     if (!prev.has(b)) return null;
@@ -595,6 +599,13 @@
     if (cfg.size) {
       html += `<div class="legend-size"><svg viewBox="0 0 26 14"><circle cx="4" cy="9" r="2.5"/><circle cx="11.5" cy="8" r="4"/><circle cx="20.5" cy="7" r="5.5"/></svg>${esc(cfg.size)}</div>`;
     }
+    if (linkKinds) {
+      html += `<div class="legend-title links">${T.linkKinds}</div>`;
+      html += linkKinds.map((it, k) => {
+        const name = it.label ? esc(it.label) : `<span class="none">${T.none}</span>`;
+        return `<button class="legend-item link-kind${state.hiddenKinds.has(k) ? " off" : ""}" data-lk="${k}"><span class="line" style="background:${it.color}"></span><span class="name">${name}</span><span class="count">${fmt(it.count)}</span></button>`;
+      }).join("");
+    }
     box.innerHTML = html;
     box.hidden = !html;
   }
@@ -602,13 +613,20 @@
     const b = e.target.closest("button");
     if (!b) return;
     if (b.dataset.more) { legendAll = !legendAll; renderLegend(); return; }
+    if (b.dataset.lk !== undefined) {
+      const k = Number(b.dataset.lk);
+      if (state.hiddenKinds.has(k)) state.hiddenKinds.delete(k); else state.hiddenKinds.add(k);
+      if (state.path && [...state.path.links].some(kindHidden)) clearAll();
+      refreshVisibility();
+      return;
+    }
     const key = b.dataset.key;
     if (state.hidden.has(key)) state.hidden.delete(key); else state.hidden.add(key);
     refreshVisibility();
   });
   $("legend").addEventListener("dblclick", (e) => {
     const b = e.target.closest(".legend-item");
-    if (!b) return;
+    if (!b || b.dataset.lk !== undefined) return;
     const key = b.dataset.key;
     const keys = legend.items.map((it) => (it.missing ? "" : it.label));
     const solo = keys.every((k) => (k === key) !== state.hidden.has(k));
