@@ -714,6 +714,17 @@ class Graph:
         return trace(self, source, target, within=within, hops=hops, time=time, lang=lang, label=label,
                      limit=limit)
 
+    def entities(self, via=None, max_share=10, lang=None, label=None):
+        """Groups of nodes tied by identifiers they share (devices, phones, addresses): probably one person.
+
+        >>> people = g.entities(via="device")
+        >>> people.graph().review()           # the same questions, per person
+
+        Identifiers shared by more than ``max_share`` nodes tie nothing.
+        """
+        from .entities import entities
+        return entities(self, via=via, max_share=max_share, lang=lang, label=label)
+
     def misfits(self, attrs=None, factor=10, min_neighbors=3, lang=None, label=None, limit=10):
         """Nodes unlike the ones they deal with: a far lower or higher number, a rare category.
 

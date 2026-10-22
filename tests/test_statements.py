@@ -137,3 +137,29 @@ def test_records_finds_rows_in_your_own_table(tmp_path):
     assert list(found["tid"]) == ["T1", "T4", "T5"]
     with pytest.raises(tc.TarecoError, match="no column 'x'"):
         tc.records(df, "a1", columns=["x"])
+
+
+# --------------------------------------------------------------------- entities
+
+def test_entities_tie_nodes_by_what_they_share():
+    g = tc.Graph([{"from": "a", "to": "shop", "amount": 10}, {"from": "b", "to": "shop", "amount": 5},
+                  {"from": "c", "to": "a", "amount": 7}, {"from": "d", "to": "shop", "amount": 1}],
+                 kind="transfer", directed=True, keep=True)
+    g.add_links([{"account": "a", "phone": "p1"}, {"account": "b", "phone": "p1"}],
+                source="account", target="phone", kind="has")
+    g.add_links([{"account": "b", "address": "x"}, {"account": "c", "address": "x"}],
+                source="account", target="address", kind="lives")
+    g.add_links([{"account": f"z{i}", "phone": "branch"} for i in range(15)] + [{"account": "d", "phone": "branch"}],
+                source="account", target="phone", kind="has")
+    people = g.entities(lang="en")
+    assert len(people) == 1 and people[0].members == ["a", "b", "c"] and people[0].via == ["p1", "x"]
+    assert people.of("b") is people[0] and people.of("d") is None  # the branch phone ties nobody
+    assert repr(people) == "Tied together by what they share\n- a, b and c: through p1 (phone) and x (address)"
+    assert len(g.entities(via="phone")) == 1 and g.entities(via="phone")[0].members == ["a", "b"]
+    merged = people.graph()
+    assert merged.nodes["E1"]["members"] == ["a", "b", "c"]
+    assert merged.edges["E1", "shop"]["amount"] == 15 and ("E1", "E1") not in merged.edges
+    assert "p1" not in merged and "branch" in merged
+    assert {e[0] for e in merged._events} >= {"E1"} and merged.rows("E1")
+    with pytest.raises(tc.TarecoError, match="no identifiers"):
+        tc.Graph([("a", "b")]).entities()

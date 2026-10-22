@@ -387,7 +387,7 @@ def _shared(ctx, limit, min_share=3):
     flowing = set()
     if plain and len(plain) < len(known):  # with flows (transfers), shared things are what does not flow
         for u, v, d in g._edge_triples():
-            if not set(_kinds_of(d)) <= plain:
+            if not (set(_kinds_of(d)) or {None}) <= plain:
                 flowing.update((u, v))
     found = []
     for x, attrs in g._nodes.items():
