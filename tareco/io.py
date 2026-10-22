@@ -26,7 +26,11 @@ DECIMAL_COMMA = re.compile(r"^-?\d+,\d+$")
 MAX_ROWS = 1_000_000
 
 
-TABLE_OPTIONS = ("kind", "keep", "account", "counterparty", "amount", "source_kind", "target_kind")
+TABLE_OPTIONS = ("kind", "keep", "account", "counterparty", "amount", "source_kind", "target_kind", "skip")
+PLACEHOLDERS = {"", "na", "n/a", "n.a.", "n.a", "null", "none", "nil", "nan", "unknown", "undefined", "missing",
+                "not available", "tbd", "default", "desconhecido", "nao informado", "não informado",
+                "sem informacao", "sem informação", "nd", "n/d", "s/n", "-", "--", "?", "0", "-1"}
+_FILLER = re.compile(r"^(0+|9{3,}|x{3,}|-+|\?+|\.+|\*+)$", re.I)
 ROLE_WORDS = set(SOURCE_COLUMNS) | set(TARGET_COLUMNS) | {
     "id", "node", "name", "key", "a", "b", "x", "y", "left", "right", "first", "second", "other"}
 
@@ -57,6 +61,44 @@ def add_links(g, data, *, source=None, target=None, directed=None, nodes=None, n
 
 class GuessWarning(UserWarning):
     """tareco had to guess which column means what."""
+
+
+class DataWarning(UserWarning):
+    """Something in the data will mislead the analysis, like a placeholder id tying everything together."""
+
+
+def looks_like_placeholder(value):
+    """"N/A", "UNKNOWN", "0", "-1", "99999", "XXX": ids that stand for "nobody knows"."""
+    if isinstance(value, bool) or value is None:
+        return False
+    if isinstance(value, (int, float)):
+        if value != value:
+            return False
+        return value in (0, -1) or (abs(value) >= 999 and set(str(int(abs(value)))) == {"9"})
+    text = str(value).strip().lower()
+    return text in PLACEHOLDERS or bool(_FILLER.match(text))
+
+
+class _Watch:
+    """Counts placeholder-looking ids while a table loads, and warns about the ones that tie many rows."""
+
+    def __init__(self):
+        self.counts = {}
+        self.rows = 0
+
+    def see(self, u, v):
+        self.rows += 1
+        for value, role in ((u, "source"), (v, "target")):
+            if looks_like_placeholder(value):
+                key = (value, role)
+                self.counts[key] = self.counts.get(key, 0) + 1
+
+    def finish(self):
+        for (value, role), k in sorted(self.counts.items(), key=lambda kv: -kv[1]):
+            if k >= max(20, 0.01 * self.rows):
+                warnings.warn(f"{value!r} is the {role} of {k:,} rows; it looks like a placeholder and ties "
+                              f"unrelated nodes together. Pass skip=[{value!r}] to leave those rows out "
+                              f"(tareco.check(table) lists what else to fix)", DataWarning, stacklevel=5)
 
 
 def choose_weight(g, weight=None):
@@ -386,7 +428,10 @@ def _add_adjacency(g, adj):
 
 
 def _add_edge_records(g, records, source, target, columns=None, *, kind=None, keep=None, account=None,
-                      counterparty=None, amount=None, source_kind=None, target_kind=None, directed=None):
+                      counterparty=None, amount=None, source_kind=None, target_kind=None, directed=None,
+                      skip=None):
+    skip = _skip_set(skip)
+    watch = _Watch()
     statement = account is not None or counterparty is not None
     plain = not statement and kind is None and keep is None and source_kind is None and target_kind is None
     if columns is None or not plain:
@@ -403,17 +448,21 @@ def _add_edge_records(g, records, source, target, columns=None, *, kind=None, ke
         merger = EdgeMerger(g)
         for r in records:
             u, v = r.get(s), r.get(t)
-            if _missing(u):
+            if _missing(u) or (skip and (u in skip or v in skip)):
                 continue
             if _missing(v):
                 g._add_node(u, {})
             else:
+                watch.see(u, v)
                 merger.add(u, v, _clean(r, (s, t)))
         merger.finish()
+        watch.finish()
         return
 
     kept = _kept_columns(keep, columns)
     if statement:
+        if skip:
+            records = [r for r in records if r.get(account) not in skip and r.get(counterparty) not in skip]
         links, kinds, amount = _statement_links(records, columns, account, counterparty, amount)
         directed = True if directed is None else directed
     else:
@@ -426,7 +475,7 @@ def _add_edge_records(g, records, source, target, columns=None, *, kind=None, ke
         links = []
         for r in records:
             u, v = r.get(s), r.get(t)
-            if _missing(u) or _missing(v):
+            if _missing(u) or _missing(v) or (skip and (u in skip or v in skip)):
                 continue
             if prefix.get(sk):
                 u = prefix[sk] + str(u)
@@ -457,6 +506,7 @@ def _add_edge_records(g, records, source, target, columns=None, *, kind=None, ke
     for u, v, attrs, row, ku, kv in links:
         if kind is not None:
             attrs["kind"] = kind
+        watch.see(u, v)
         merger.add(u, v, attrs)
         if ku is not None:
             g._nodes[u].setdefault("kind", ku)
@@ -465,8 +515,15 @@ def _add_edge_records(g, records, source, target, columns=None, *, kind=None, ke
         if kept is not None:
             g._events.append((u, v, kind, dict(row) if kept is True else {c: row.get(c) for c in kept}))
     merger.finish()
+    watch.finish()
     if statement and "weight" not in g.attrs:
         g.attrs["weight"] = amount
+
+
+def _skip_set(skip):
+    if skip is None:
+        return None
+    return {skip} if isinstance(skip, (str, int, float)) else set(skip)
 
 
 def _kept_columns(keep, columns):

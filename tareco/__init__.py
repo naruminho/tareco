@@ -34,14 +34,15 @@ from .temporal import Timeline, timeline
 from .graph import Graph
 from .i18n import set_language
 from .excel import read_excel
-from .io import GuessWarning, read_csv, read_json
+from .io import DataWarning, GuessWarning, read_csv, read_json
+from .quality import check
 from .tracing import records
 from .compare import compare
 
 __version__ = "1.5.0"
 
 _LOAD_OPTIONS = ("directed", "nodes", "source", "target", "node_id", "max_rows", "weight", "kind", "keep",
-                 "account", "counterparty", "amount", "source_kind", "target_kind")
+                 "account", "counterparty", "amount", "source_kind", "target_kind", "skip")
 
 
 def _split(options):
@@ -97,4 +98,5 @@ __all__ = [
     "complete_graph", "path_graph", "cycle_graph", "star_graph", "grid_graph", "random_graph",
     "scale_free_graph", "small_world_graph", "community_graph",
     "TarecoError", "NodeNotFound", "EdgeNotFound", "NoPath", "NotConnected", "HasCycle", "GuessWarning",
+    "DataWarning", "check",
 ]

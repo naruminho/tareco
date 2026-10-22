@@ -99,6 +99,8 @@ class Graph:
                   read a bank statement: one row per entry, money out negative.
     source_kind, target_kind
                   the kinds of node at each end ("account", "device").
+    skip          ids to leave out, with every row that has them ("N/A", "UNKNOWN").
+                  Placeholders that tie many rows together come with a warning.
 
     >>> g = Graph([("ana", "bia"), ("bia", "caio", 2.5)])
     >>> g.shortest_path("ana", "caio")
@@ -108,7 +110,7 @@ class Graph:
     def __init__(self, data=None, *, directed=None, nodes=None, source=None,
                  target=None, node_id=None, weight=None, max_rows=1_000_000, kind=None, keep=None,
                  account=None, counterparty=None, amount=None, source_kind=None, target_kind=None,
-                 **attrs):
+                 skip=None, **attrs):
         self.attrs = dict(attrs)
         self._reset(bool(directed))
         if data is not None or nodes is not None:
@@ -116,7 +118,7 @@ class Graph:
             load_into(self, data, directed=directed, nodes=nodes, source=source,
                       target=target, node_id=node_id, max_rows=max_rows, kind=kind, keep=keep,
                       account=account, counterparty=counterparty, amount=amount,
-                      source_kind=source_kind, target_kind=target_kind)
+                      source_kind=source_kind, target_kind=target_kind, skip=skip)
         from .io import choose_weight
         choose_weight(self, weight)
 
@@ -202,7 +204,7 @@ class Graph:
 
     def add_links(self, data, source=None, target=None, *, kind=None, directed=None, keep=None,
                   account=None, counterparty=None, amount=None, source_kind=None, target_kind=None,
-                  nodes=None, node_id=None, max_rows=1_000_000):
+                  nodes=None, node_id=None, max_rows=1_000_000, skip=None):
         """Add one more table of links, usually of another kind, and return the graph.
 
         >>> g = tareco.Graph(statements, account="account", counterparty="counterparty", kind="transfer")
@@ -218,7 +220,7 @@ class Graph:
         add_links(self, data, source=source, target=target, directed=directed, nodes=nodes,
                   node_id=node_id, max_rows=max_rows, kind=kind, keep=keep, account=account,
                   counterparty=counterparty, amount=amount, source_kind=source_kind,
-                  target_kind=target_kind)
+                  target_kind=target_kind, skip=skip)
         return self
 
     def remove_node(self, node):

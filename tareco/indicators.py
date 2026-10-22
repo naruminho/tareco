@@ -61,8 +61,11 @@ def transfers(g, time=None, need_time=False):
     return out
 
 
-def time_column(rows, time=None):
-    """The column with the date of each row: ``time`` if given, else one that looks like a date."""
+def time_column(rows, time=None, strict=True):
+    """The column with the date of each row: ``time`` if given, else one that looks like a date.
+
+    ``strict=False`` takes a column named like a date even when some values cannot be read.
+    """
     if not rows:
         return time
     names = list(dict.fromkeys(k for r in rows[:200] for k in r))
@@ -79,6 +82,8 @@ def time_column(rows, time=None):
             continue
         if all(isinstance(v, (int, float)) for v in sample):
             continue  # numbers are amounts and ids more often than times
+        if not strict and named(c):
+            return c
         try:
             parse_times(sample)
             return c

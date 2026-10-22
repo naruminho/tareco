@@ -21,7 +21,7 @@ YMD = re.compile(r"^\s*(\d{4})[/.](\d{1,2})[/.](\d{1,2})(?:[ T](\d{1,2}):(\d{2})
 
 def timeline(data, time, freq="auto", source=None, target=None, directed=False, weight=None,
              nodes=None, cumulative=False, dayfirst=None, max_rows=MAX_ROWS, account=None,
-             counterparty=None, amount=None):
+             counterparty=None, amount=None, skip=None):
     """A network that changes over time, built from a table of timed events.
 
     data        CSV path, pandas/polars/Spark DataFrame or rows; one row per event.
@@ -37,7 +37,10 @@ def timeline(data, time, freq="auto", source=None, target=None, directed=False, 
     account, counterparty, amount
                 read a bank statement, as in ``Graph``: money out negative, each
                 transfer counted once even when both statements are in the table.
+    skip        ids to leave out, with every row that has them ("N/A", "UNKNOWN").
     """
+    from .io import _skip_set
+    skip = _skip_set(skip)
     columns, rows = iter_table(data, max_rows)
     if not columns:
         raise TarecoError("the table is empty")
@@ -61,7 +64,7 @@ def timeline(data, time, freq="auto", source=None, target=None, directed=False, 
     kept = []
     for row in rows:
         u, v, when = row.get(s), row.get(t), row.get(time)
-        if _missing(u) or _missing(v) or _missing(when):
+        if _missing(u) or _missing(v) or _missing(when) or (skip and (u in skip or v in skip)):
             continue
         kept.append((when, u, v, [row.get(c) for c in others]))
     if not kept:
