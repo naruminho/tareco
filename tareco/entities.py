@@ -23,7 +23,7 @@ class Entity:
         return len(self.members)
 
     def __repr__(self):
-        return f"Entity({self.members!r})"
+        return f"{', '.join(map(str, self.members))} (through {', '.join(map(str, self.via))})"
 
 
 class Entities(list):

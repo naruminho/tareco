@@ -44,3 +44,5 @@ print()
 # Colored by city, sized by how much each person bridges the others (betweenness).
 g.save(OUT / "friends.html", color="city", size="betweenness", title="Friends by city")
 print("Open:", OUT / "friends.html")
+# A still picture for a slide or an e-mail (.png works too, with Pillow installed).
+g.save(OUT / "friends.svg", color="city", size="betweenness", title="Friends by city")

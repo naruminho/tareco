@@ -246,8 +246,12 @@ g.unusual_amounts()                       # far above what the account usually s
 g.flows(by="counterparty_country")        # where the money goes
 g.misfits("monthly_income")               # unlike the accounts it deals with
 g.near(["a017"])                          # close to a list you give
+g.fast_moves(within="3 days")             # a large amount in, most of it out again within days
+g.trace("a181", "PI-ACC-8")               # paths that follow the transfers in time order
 g.why("a023")                             # one account, in plain words
 g.similar_to("a017")                      # others that behave like a known case
+g.review(watch=["a017"])                  # all of it per account, ranked: a work list
+g.entities(via="device")                  # accounts tied by what they share: one person?
 ```
 
 ```
@@ -268,6 +272,23 @@ Most like a017
   closeness never goes through hubs (everybody is two steps from a supermarket).
 - With rows kept, `explain()` adds the strongest of these on its own.
 
+**A work list.** `g.review()` gathers every signal per node and ranks them, one
+line per kind of signal and the ids of the rows behind them:
+
+```
+Worth a look
+1. a023 (score 11.2), 6 rows behind it
+   - a023 received 40,493 and passed on 41,746 within 3 days (2026-03-20 to 2026-03-23).
+   - a023 receives from 6 nodes and passes almost all of it on to 32 (207,767 in, 173,508 out).
+   - a023 has monthly_income 2,060, 67x lower than the median of the 5 nodes it deals with (137,780).
+   ...
+```
+
+`review.to_pandas()` and `review.to_spark(spark)` make it a table to save next to
+the data. `g.entities(via="device").graph()` merges accounts tied by shared
+devices (or phones, addresses) into one node each, so every question runs per
+person; identifiers shared by too many accounts tie nobody.
+
 **Back to your records.** `keep=True` (or `keep=["transaction_id", ...]`) keeps
 the rows behind every link:
 
@@ -283,7 +304,9 @@ in the table's own format; on Spark the filter runs in the cluster.
 ## The view
 
 - **Hover** a node to light up its neighborhood; **click** it for a side panel
-  with its metrics, attributes and clickable neighbors.
+  with what stands out about it, its metrics, attributes and clickable neighbors.
+- **Insights**: the findings in words; clicking one lights up its nodes and, when
+  rows are kept, shows the rows of your table behind it.
 - **Drag** nodes around; dragged nodes stay pinned (right-click to release).
 - **Search** with `/`, jump with Enter.
 - **Shortest path** mode: click two nodes and the route lights up.
@@ -303,6 +326,7 @@ g.show(
     theme="dark",            # "auto", "dark", "light"
 )
 g.save("friends.html")       # standalone file, send it to anyone
+g.save("friends.svg")        # a still picture for slides and e-mails (.png with Pillow)
 ```
 
 `color` and `size` also accept a `{node: value}` dict (like the output of any
@@ -365,6 +389,19 @@ needed), and `DECIMAL` columns become floats. Anything above `max_rows` rows
 (1,000,000 by default) is refused with a hint to aggregate in Spark first, which
 is almost always the right move: a graph of who-pays-whom with a total per pair
 is far smaller than the raw transactions. `max_rows=None` lifts the limit.
+
+**Inside the cluster.** For edge tables too big to bring over, `tareco.big`
+answers in Spark and returns Spark DataFrames (no GraphFrames; it runs on Spark
+Connect and Databricks serverless too):
+
+```python
+edges = tareco.big.statement_edges(spark.table("statements"), "account", "counterparty", "amount")
+tareco.big.components(edges)        # node, component (1 = the biggest)
+tareco.big.degrees(edges, weight="amount")
+tareco.big.pagerank(edges)
+tareco.big.communities(edges)       # label propagation
+tareco.neighborhood(edges, start="a017", hops=2)   # a small piece, as a Graph
+```
 
 ## Big graphs
 
@@ -442,6 +479,12 @@ g.reverse(), g.to_undirected(), g.copy()
 | One node, in words | `g.why(node, watch=None)` |
 | Behaves like a known case | `g.similar_to(nodes, n=10)` |
 | The rows behind it | `g.rows(nodes)`, `tareco.records(table, nodes)` |
+| Money passed on fast | `g.fast_moves(within="3 days")` |
+| Paths in time order | `g.trace(source, target=None, within="30 days")` |
+| A ranked work list | `g.review(watch=None)` |
+| One person, several accounts | `g.entities(via=None)` |
+| What changed | `tareco.compare(before, after)`, `timeline.compare(p1, p2)` |
+| A still picture | `g.save("graph.svg")`, `g.save("graph.png")` |
 | Order of tasks | `g.topological_sort()`, `g.has_cycle()`, `g.find_cycle()` (one loop, any length) |
 | Size of the world | `g.diameter()` |
 | Walk it | `g.bfs(a)`, `g.dfs(a)` |

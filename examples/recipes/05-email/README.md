@@ -97,6 +97,26 @@ In April the Data team was born: 7 new people who form a group of their own.
 `freq` can be `"day"`, `"week"`, `"month"`, `"quarter"` or `"year"`; without it,
 tareco picks one (at most 24 periods).
 
+Or two months side by side:
+
+```python
+timeline.compare("2026-01", "2026-06")
+```
+
+```
+What changed
+- From 52 to 59 nodes (+7) and from 112 to 134 connections (+22).
+- The total weight went from 171 to 207 (+21%).
+- 7 nodes are new; the most connected: Bruno Dat2, Elisa Dat5, Ana Dat1 and 4 more.
+- Yara IT11 went from 1 to 8 connections.
+- A new group of 7 nodes formed, around Bruno Dat2, Ana Dat1 and Carla Dat3.
+- The link between Paulo Mar2 and Tiago Mar6 grew from 1 to 6.
+...
+```
+
+`tareco.compare(before, after)` does the same for any two graphs: two regions,
+two versions, before and after a change.
+
 **5. How far does a note reach?** `spread` follows the order of the e-mails: it
 only counts if A wrote to B **before** B wrote to C.
 

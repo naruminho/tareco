@@ -48,6 +48,7 @@ FINDS = {
         "Paulo Mar2 is a bridge between groups",
         "A new group of 7 nodes formed in 2026-04",
         "the news could have reached 58 people",
+        "What changed\n- From 52 to 59 nodes (+7)",
     ],
     "06-dependencies/dependencies.py": [
         "Circular dependency: config -> cache -> config",
@@ -64,6 +65,11 @@ FINDS = {
         "a017 sent 8 transfers just under 10,000 within 5 days",
         "a142 sent 7 transfers just under 10,000 within 3 days",
         "a055 sent 85,000 to ART-DEALER-W on 2026-03-14",
+        "Worth a look\n1. a023 (score ",
+        "a023 received 40,493 and passed on 41,746 within 3 days",
+        "a181 to a023 to PI-ACC-8: 2 transfers from 2026-02-20 to 2026-02-23",
+        "a017, a023, a142, a199 (through dev-77)",
+        "1. E1 (score ",
         "a023 has occupation cleaner, but 100% of the 5 nodes it deals with have executive.",
         "a142 is 2 steps from a017, through dev-77 (device).",
         "It shares dev-77 (device) with a017, a142 and a199.",
@@ -115,6 +121,8 @@ def test_recipe_tells_its_story(copy, recipe):
         assert phrase not in text, f"{recipe} says: {phrase}"
     pages = list((copy / "recipes" / recipe).parent.glob("out/*.html"))
     assert pages and all(p.stat().st_size > 10_000 for p in pages)
+    for picture in (copy / "recipes" / recipe).parent.glob("out/*.svg"):
+        assert picture.read_text(encoding="utf-8").startswith("<svg")
 
 
 def test_every_recipe_has_a_readme_and_is_listed():

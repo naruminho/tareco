@@ -70,7 +70,34 @@ alike = g.similar_to("a017", n=5)
 print(alike)
 print()
 
-# %% 11. Back to the records
+# %% 11. The work list
+# Everything above, gathered per account and ranked: the strongest cases first,
+# one line per kind of signal, and the ids of the transactions behind them.
+# review.to_pandas() or review.to_spark(spark) turns it into a table to work from.
+review = g.review(watch=["a017"], limit=10_000, top=5)
+print(review)
+print()
+
+# %% 12. Money passed on fast
+# A large amount in, and most of it out to others within a few days.
+print(g.fast_moves(within="3 days"))
+print()
+
+# %% 13. Following the money in time
+# Only paths where each transfer happens after the one before it count.
+print(g.trace("a181", "PI-ACC-8", within="30 days"))
+print()
+
+# %% 14. One person, several accounts?
+# Accounts tied by the devices they share. A device shared by many accounts (a
+# branch computer) would tie nobody. people.graph() merges each group into one
+# node, and the same questions then run per person.
+people = g.entities(via="device")
+print(people.of("a017"))
+print(people.graph().review(limit=10_000, top=1))
+print()
+
+# %% 15. Back to the records
 # Every finding keeps the rows of your table behind it.
 pile = g.splits(limit=10_000)[0]
 print("Transactions to review:", ", ".join(pile.rows.column("transaction_id")))
@@ -80,7 +107,9 @@ rows = tareco.records(HERE / "statements.csv", alike.nodes[0], columns=["account
 print(f"{alike.nodes[0]} has {len(rows)} rows in statements.csv")
 print()
 
-# %% 12. See it
-# Colored by kind of node; the legend also lets you hide each kind of link.
+# %% 16. See it
+# Colored by kind of node; click an account for what stands out about it, click a
+# finding for the rows behind it, and use the legend to hide each kind of link.
 g.save(OUT / "statements.html", color="kind", title="Statements and devices")
+g.save(OUT / "statements.svg", color="kind", title="Statements")  # a still picture for slides
 print("Open:", OUT / "statements.html")

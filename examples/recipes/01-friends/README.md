@@ -104,6 +104,13 @@ g.save("friends.html", color="city", size="betweenness", title="Friends by city"
 - `color="city"`: one color per city.
 - `size="betweenness"`: whoever bridges the most is bigger. Iris and Mel stand out.
 
+For a slide or an e-mail, the same call with `.svg` (or `.png`, with Pillow
+installed) draws a still picture, laid out in Python:
+
+```python
+g.save("friends.svg", color="city", size="betweenness", title="Friends by city")
+```
+
 ## What to look at in the page
 
 - Hover a node: its neighbors light up.

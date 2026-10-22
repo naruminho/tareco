@@ -173,10 +173,14 @@ def communities(edges, source=None, target=None, weight=None, iterations=10):
         .groupBy("src", "dst").agg(F.sum("w").alias("w"))
     pairs = _settle(pairs)
     labels = _settle(pairs.select(F.col("src").alias("node")).distinct().withColumn("label", F.col("node")))
+    # each node also votes for the label it has, as much as an average neighbor: without it
+    # two linked nodes swap labels forever
+    own = _settle(pairs.groupBy(F.col("src").alias("node")).agg(F.avg("w").alias("self_w")))
     pick = Window.partitionBy("node").orderBy(F.desc("weight"), F.col("label"))
     for _ in range(iterations):
-        votes = pairs.join(labels, pairs["src"] == labels["node"]).groupBy(F.col("dst").alias("node"), "label") \
-            .agg(F.sum("w").alias("weight"))
+        theirs = pairs.join(labels, pairs["src"] == labels["node"]).select(F.col("dst").alias("node"), "label", "w")
+        mine = labels.join(own, "node").select("node", "label", F.col("self_w").alias("w"))
+        votes = theirs.unionByName(mine).groupBy("node", "label").agg(F.sum("w").alias("weight"))
         best = votes.withColumn("r", F.row_number().over(pick)).filter(F.col("r") == 1).select("node", "label")
         new = _settle(labels.select("node").join(best, "node", "left")
                       .join(labels.withColumnRenamed("label", "old"), "node")

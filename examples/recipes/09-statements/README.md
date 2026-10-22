@@ -211,7 +211,87 @@ passing money on, piles under a limit, unusual amounts, things shared), not who
 it is. Only accounts are compared with accounts. Several known cases work too:
 `g.similar_to(["a017", "a142"])`.
 
-**11. Back to the records.**
+**11. The work list.** Everything above, gathered per account and ranked:
+
+```python
+review = g.review(watch=["a017"], limit=10_000, top=5)
+review.to_pandas()          # or review.to_spark(spark), to save next to the data
+```
+
+```
+Worth a look
+1. a023 (score 11.2), 6 rows behind it
+   - a023 received 40,493 and passed on 41,746 within 3 days (2026-03-20 to 2026-03-23).
+   - a023 receives from 6 nodes and passes almost all of it on to 32 (207,767 in, 173,508 out).
+   - a023 sent 41,746 to PI-ACC-8 on 2026-03-23, 467x what it usually sends (89.4). (and 4 more like it)
+   - a023 has monthly_income 2,060, 67x lower than the median of the 5 nodes it deals with (137,780).
+   - a023 has occupation cleaner, but 100% of the 5 nodes it deals with have executive.
+   - a023 is 2 steps from a017, through dev-77 (device).
+   - 4 account nodes share dev-77 (device).
+2. a142 (score 8), 7 rows behind it
+   - a142 sent 7 transfers just under 10,000 within 3 days (2026-05-18 to 2026-05-21), to 3 receivers, 9,436 to 9,945 each.
+   ...
+3. a017 (score 6.5), 8 rows behind it
+   ...
+```
+
+The score adds up the signals: piles under a limit weigh most, then money passed
+on fast, unusual amounts, loops, chains and pass-throughs, then misfits,
+closeness to the list and things shared. Twenty loops are one story: a second
+signal of the same kind adds only a little. The table has the account, the
+score, the signals, one line per reason, the number of rows and their ids, plus
+the account's own attributes.
+
+**12. Money passed on fast.**
+
+```python
+g.fast_moves(within="3 days")
+```
+
+```
+- a023 received 40,493 and passed on 41,746 within 3 days (2026-03-20 to 2026-03-23).
+```
+
+A large amount in, far above what the account usually receives, and most of it
+out to others within days. Money sent back to whoever sent it does not count.
+
+**13. Following the money in time.**
+
+```python
+g.trace("a181", "PI-ACC-8", within="30 days")
+```
+
+```
+- a181 to a023 to PI-ACC-8: 2 transfers from 2026-02-20 to 2026-02-23, up to 31,587 all the way.
+```
+
+A path only counts when each transfer happens after the one before it.
+`g.trace("a181")`, without a target, lists everyone the money could have
+reached.
+
+**14. One person, several accounts?**
+
+```python
+people = g.entities(via="device")
+people.of("a017")
+people.graph().review(limit=10_000, top=1)
+```
+
+```
+a017, a023, a142, a199 (through dev-77)
+Worth a look
+1. E1 (score 8), 34 rows behind it
+   - E1 sent 8 transfers just under 10,000 within 5 days (2026-04-13 to 2026-04-18), to 4 receivers, 9,434 to 9,901 each.
+   ...
+```
+
+Accounts tied by the devices they share (phones, addresses and e-mails work the
+same way, as links of their own kind). A device shared by more than 10 accounts,
+like a branch computer, ties nobody. `people.graph()` merges each group into one
+node, `E1`, with its links and rows added up, and every question then runs per
+person.
+
+**15. Back to the records.**
 
 ```python
 pile = g.splits(limit=10_000)[0]
@@ -230,9 +310,15 @@ Every finding keeps the rows of your table behind it (`.rows`, with
 and returns it in the table's own format: on a Spark table the filter runs in the
 cluster and nothing is collected.
 
-**12. See it.** `out/statements.html`, colored by kind of node. The legend also
-lists the kinds of link: click `uses` to hide the logins and look at the money
-alone.
+**16. See it.** `out/statements.html`, colored by kind of node.
+
+- Click an account: its card starts with what stands out about it.
+- Click a finding under **Insights**: the rows of your table behind it show up
+  right under it.
+- The legend lists the kinds of link: click `uses` to hide the logins and look
+  at the money alone.
+
+`out/statements.svg` is a still picture of the same graph, for a slide.
 
 ## With your own data
 

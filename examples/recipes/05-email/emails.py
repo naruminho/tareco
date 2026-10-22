@@ -39,6 +39,9 @@ timeline = tareco.timeline(HERE / "emails.csv", time="date", nodes=HERE / "peopl
 for change in timeline.changes():
     print("-", change.text)
 print()
+# Or two months side by side: what is different in June compared with January?
+print(timeline.compare("2026-01", "2026-06"))
+print()
 
 # %% 5. How far does a note from leadership reach, and when?
 # spread follows the order of the e-mails: it only counts if A wrote to B before

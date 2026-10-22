@@ -153,10 +153,10 @@ tareco friends.csv --nodes people.csv --explain
 ## Reading the page
 
 - **Hover** a node: it and its neighbors light up.
-- **Click** a node: a card opens with its metrics, attributes and (clickable) neighbors.
+- **Click** a node: a card opens with what stands out about it, its metrics, attributes and (clickable) neighbors.
 - **Drag** a node: it stays where you drop it. Right-click lets it go.
 - **Search** (the `/` key): type a name and press Enter.
-- **Insights**: the sentences of the summary. Click one to light up the nodes it talks about.
+- **Insights**: the sentences of the summary. Click one to light up the nodes it talks about; with rows kept, the rows of your table behind it show up too.
 - **Shortest path**: click two nodes and the path between them lights up.
 - **Legend**: one click hides a group, a double click shows only that group.
 - **Groups overview**: each group becomes a bubble; click one to open it.
@@ -171,6 +171,13 @@ g.show(color="city",             # color by an attribute, or "community", "pager
        label="name",             # what is written next to each node
        edge_width="amount",      # line width
        title="My network")
+```
+
+For a slide or an e-mail, save a still picture instead of a page:
+
+```python
+g.save("network.svg", color="city", title="My network")   # nothing else needed
+g.save("network.png", color="city")                        # needs Pillow: pip install pillow
 ```
 
 Big graphs (thousands of nodes) switch to WebGL on their own, which handles
@@ -255,6 +262,16 @@ Dates can be dates, text like `2026-04-15` or `15/04/2026`, or numbers. tareco
 picks days, weeks, months, quarters or years on its own; to choose,
 `freq="month"`.
 
+To put two moments side by side:
+
+```python
+timeline.compare("2026-01", "2026-06")     # two periods of a timeline
+tareco.compare(january, june)              # any two graphs: regions, versions, before and after
+```
+
+It says which nodes came and went, who rose in importance or jumped in
+connections, which groups formed, vanished or merged, and which links grew most.
+
 ## Two-sided data
 
 Sometimes the table does not say who is linked to whom, but "customer bought
@@ -305,6 +322,17 @@ g = tareco.Graph(statements, account="account", counterparty="counterparty",
 | Others that behave like a known case | `g.similar_to("a017")` |
 | The transactions behind a finding | `finding.rows`, `g.rows("a017")` |
 | The same accounts in your own table | `tareco.records(table, ids, columns=["account"])` |
+| A large amount in and out again within days | `g.fast_moves(within="3 days")` |
+| Where the money from one account went, in time order | `g.trace("a181", "PI-ACC-8")` |
+| Several accounts that are probably one person | `g.entities(via="device")` |
+| All of it, per account, ranked: a work list | `g.review(watch=["a017"])` |
+
+`g.review()` is the place to start a day of work: it ranks the accounts by how
+many signals they have and how strong, gives one line per kind of signal and the
+ids of the transactions behind them. `review.to_pandas()` or
+`review.to_spark(spark)` turns it into a table to save next to the data.
+`g.entities(via="device").graph()` merges the accounts each person uses into one
+node, and every question then runs per person.
 
 `keep=True` is what lets tareco look at single transfers and take you back to
 them. The limits and the lists are yours: tareco says what it sees, you decide
@@ -320,6 +348,10 @@ all of it.
   (`max_rows=None` lifts the limit.)
 - To look into one account in a huge table, `tareco.neighborhood(table,
   start="account", hops=2)` fetches only its surroundings, inside the cluster.
+- To ask the whole table without bringing it over, `tareco.big` computes inside
+  Spark and returns Spark tables: `tareco.big.components(edges)`,
+  `degrees`, `pagerank`, `communities`, and `statement_edges(statements, ...)`
+  to turn bank statements into edges first.
 - On Databricks, `g.show()` draws inside the cell. If the graph does not fit in
   the cell's output limit, tareco shows its most important part and says so.
 - `tareco.doctor(spark)` checks that everything works in the environment. There
