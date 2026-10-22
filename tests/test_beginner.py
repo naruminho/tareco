@@ -54,7 +54,7 @@ def test_a_lone_number_column_is_the_weight():
     assert g.attrs["weight"] == "messages"  # not the count tareco added for the repeated pair
     assert g.edges["a", "b"] == {"messages": 5, "count": 2}
     assert tc.Graph([{"from": "a", "to": "b", "minutes": 4}]).attrs["weight"] == "minutes"
-    for name in ("year", "account_id", "zip_code", "date"):  # numbers, but not strengths
+    for name in ("year", "account_id", "accountId", "zip_code", "date"):  # numbers, but not strengths
         assert "weight" not in tc.Graph([{"from": "a", "to": "b", name: 2019}]).attrs
     both = tc.Graph([{"from": "a", "to": "b", "messages": 3, "calls": 1}])
     assert "weight" not in both.attrs  # two candidates: do not guess

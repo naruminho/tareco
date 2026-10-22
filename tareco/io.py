@@ -77,7 +77,7 @@ def guess_weight(names, values):
 
 def _labels_something(name):
     """Numbers that name or date things rather than measure a connection: ids, years, codes."""
-    words = re.sub(r"([a-z])([A-Z])", r"_", str(name)).lower()
+    words = re.sub(r"([a-z])([A-Z])", r"\1_\2", str(name)).lower()
     return bool(set(re.split(r"[^a-z0-9]+", words)) & NOT_WEIGHT)
 
 
